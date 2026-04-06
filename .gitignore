@@ -13,3 +13,6 @@
 !/storage/cache/.gitkeep
 !/storage/sessions/.gitkeep
 .DS_Store
+
+/storage/visits.json
+/assets/screen/.DS_Store
