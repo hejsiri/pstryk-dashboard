@@ -4,7 +4,7 @@ Lekki dashboard WWW w PHP dla Pstryk. Aplikacja loguje się do API Pstryk, pobie
 
 Projekt powstał po to, aby w prosty i czytelny sposób wyświetlać dynamiczne ceny energii Pstryk na ekranie Tesli, ale może sprawdzić się również w wielu innych zastosowaniach.
 
-W pełni funkcjonalne demo projektu znajduje się pod adresem: https://www.hejsiti.pl/pstryk-dashboard
+W pełni funkcjonalne demo projektu znajduje się pod adresem: https://www.hejsiri.pl/pstryk-dashboard/
 
 ## Co potrafi
 
