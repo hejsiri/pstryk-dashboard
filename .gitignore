@@ -1,0 +1,15 @@
+/vendor/
+/.idea/
+/.vscode/
+/.DS_Store
+/assets/.DS_Store
+/assets/img/.DS_Store
+/storage/cache/*
+/storage/sessions/*
+/storage/*.log
+/storage/**/*.log
+/storage/**/.DS_Store
+/storage/**/.gitkeep
+!/storage/cache/.gitkeep
+!/storage/sessions/.gitkeep
+.DS_Store
