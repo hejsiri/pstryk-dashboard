@@ -767,7 +767,7 @@ $tomorrowChartPoints = array_map(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pstryk Web</title>
+    <title>Pstryk Dashboard</title>
     <link rel="stylesheet" href="<?= h($cssUrl) ?>">
 </head>
 <body class="<?= trim(($client->hasAuth() ? 'auth' : 'guest') . ($isNightBg ? ' bg-night' : '')) ?>" style="--dashboard-bg: url('<?= h($bgUrl) ?>');">
@@ -990,13 +990,13 @@ $tomorrowChartPoints = array_map(
         <?php endif; ?>
 
         <div class="footer-right">
-            <div class="footer-counter">Odsłon: <?= h(number_format($visitCount, 0, ',', ' ')) ?></div>
             <a class="footer-link" href="https://github.com/hejsiri/pstryk-dashboard" target="_blank" rel="noopener noreferrer">
                 <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
                     <path d="M12 2a10 10 0 0 0-3.16 19.49c.5.1.68-.22.68-.48v-1.68c-2.78.6-3.37-1.2-3.37-1.2-.46-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.61.07-.61 1 .07 1.52 1.03 1.52 1.03.88 1.52 2.32 1.08 2.88.82.09-.64.35-1.08.63-1.33-2.22-.25-4.55-1.11-4.55-4.95 0-1.09.39-1.98 1.03-2.68-.11-.25-.45-1.27.1-2.64 0 0 .83-.27 2.73 1.03a9.5 9.5 0 0 1 4.96 0c1.9-1.3 2.73-1.03 2.73-1.03.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.85-2.33 4.7-4.56 4.95.36.31.68.92.68 1.86v2.76c0 .27.18.59.69.48A10 10 0 0 0 12 2z"/>
                 </svg>
                 <span>zobacz projekt na Github</span>
             </a>
+            <div class="footer-counter">Odsłon: <?= h(number_format($visitCount, 0, ',', ' ')) ?></div>
         </div>
     </footer>
 </div>
