@@ -292,7 +292,10 @@
                     const padX = 10;
                     const boxW = textW + padX * 2;
                     const boxH = 24;
-                    const boxX = x - (boxW / 2);
+                    const chartLeft = (chart.chartArea?.left ?? 0) + 4;
+                    const chartRight = (chart.chartArea?.right ?? chart.width) - 4;
+                    const centeredBoxX = x - (boxW / 2);
+                    const boxX = Math.min(Math.max(centeredBoxX, chartLeft), chartRight - boxW);
                     const boxY = y - (boxH / 2);
 
                     ctx.fillStyle = isNegative ? '#b45309' : '#0f766e';
@@ -300,9 +303,9 @@
                     ctx.fill();
 
                     ctx.fillStyle = '#ffffff';
-                    ctx.textAlign = 'center';
+                    ctx.textAlign = 'left';
                     ctx.textBaseline = 'middle';
-                    ctx.fillText(text, x, y + 0.5);
+                    ctx.fillText(text, boxX + padX, y + 0.5);
                     ctx.restore();
                 }
             }
