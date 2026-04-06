@@ -188,6 +188,26 @@
 
     let currentViewIndex = 0;
 
+    function isDesktopChart() {
+        return window.matchMedia('(min-width: 701px)').matches;
+    }
+
+    function applyXAxisDensity() {
+        if (!priceChart || !priceChart.options || !priceChart.options.scales || !priceChart.options.scales.x) {
+            return;
+        }
+
+        const xTicks = priceChart.options.scales.x.ticks || {};
+        if (isDesktopChart()) {
+            xTicks.autoSkip = false;
+            delete xTicks.maxTicksLimit;
+        } else {
+            xTicks.autoSkip = true;
+            xTicks.maxTicksLimit = 12;
+        }
+        priceChart.options.scales.x.ticks = xTicks;
+    }
+
     function formatCountdown(totalSeconds) {
         const h = Math.floor(totalSeconds / 3600);
         const m = Math.floor((totalSeconds % 3600) / 60);
@@ -429,6 +449,7 @@
         chartTitleEl.textContent = `Ceny energii ${dayWord}`;
         chartInfoEl.textContent = view.info;
         updateNavVisibility();
+        applyXAxisDensity();
 
         if (!frames.length) {
             priceChart.data.labels = ['Brak danych'];
@@ -495,6 +516,11 @@
             updateNavVisibility();
         }
     }, 1000);
+
+    window.addEventListener('resize', () => {
+        applyXAxisDensity();
+        priceChart.update('none');
+    });
 
     renderView(currentViewIndex);
 })();
