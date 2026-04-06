@@ -6,6 +6,19 @@ Projekt powstał po to, aby w prosty i czytelny sposób wyświetlać dynamiczne 
 
 W pełni funkcjonalne demo projektu znajduje się pod adresem: https://www.hejsiri.pl/pstryk-dashboard/
 
+## Zrzuty ekranu
+
+<table>
+  <tr>
+    <td><img src="assets/screen/dashboard-1.jpeg" alt="Pstryk Dashboard - ekran 1" width="100%"></td>
+    <td><img src="assets/screen/dashboard-2.jpeg" alt="Pstryk Dashboard - ekran 2" width="100%"></td>
+  </tr>
+  <tr>
+    <td><img src="assets/screen/dashboard-3.jpeg" alt="Pstryk Dashboard - ekran 3" width="100%"></td>
+    <td><img src="assets/screen/dashboard-4.jpeg" alt="Pstryk Dashboard - ekran 4" width="100%"></td>
+  </tr>
+</table>
+
 ## Co potrafi
 
 - logowanie do konta Pstryk przez `email + hasło`,
