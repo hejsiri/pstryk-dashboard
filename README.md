@@ -1,63 +1,54 @@
 # Pstryk Dashboard
 
-Lekki dashboard WWW w PHP dla Pstryk. Aplikacja loguje sie do API Pstryk, pobiera dane o cenach energii i zuzyciu oraz pokazuje je w czytelnym widoku desktop/mobile.
+Lekki dashboard WWW w PHP dla Pstryk. Aplikacja loguje się do API Pstryk, pobiera dane o cenach energii i zużyciu oraz pokazuje je w czytelnym widoku desktop/mobile.
+
+Projekt powstał po to, aby w prosty i czytelny sposób wyświetlać dynamiczne ceny energii Pstryk na ekranie Tesli, ale może sprawdzić się również w wielu innych zastosowaniach.
+
+W pełni funkcjonalne demo projektu znajduje się pod adresem: https://www.hejsiti.pl/pstryk-dashboard
 
 ## Co potrafi
 
-- logowanie do konta Pstryk przez `email + haslo`,
-- trwala sesja po stronie serwera,
-- obsluga wielu licznikow,
-- ceny energii na dzis i jutro,
-- wykres slupkowy z nawigacja miedzy dniami,
-- kafelki z zuzyciem i kosztami dla dnia oraz miesiaca,
+- logowanie do konta Pstryk przez `email + hasło`,
+- trwała sesja po stronie serwera,
+- obsługa wielu liczników,
+- ceny energii na dziś i jutro,
+- wykres słupkowy z nawigacją między dniami,
+- kafelki z zużyciem i kosztami dla dnia oraz miesiąca,
 - sekcja `RAW API`,
-- dodatkowa obsluga `Integrations API key`,
-- automatyczna zmiana tla zalezne od pory dnia.
+- dodatkowa obsługa `Integrations API key`,
+- automatyczna zmiana tła zależnie od pory dnia,
+- płynne przełączanie teł między porankiem, dniem, wieczorem i nocą.
 
 ## Wymagania
 
 - PHP 8.1 lub nowszy
 - rozszerzenie `curl`
-- serwer WWW z obsluga PHP lub lokalny `php -S`
+- serwer WWW z obsługą PHP lub lokalny `php -S`
 
-## Uruchomienie lokalne
+## Instalacja na hostingu
 
-```bash
-cd /Users/paweltucki/Sites/localhost/pstryk-dashboard
-php -S localhost:8090
-```
+1. Skopiuj pliki projektu na swój hosting PHP, na przykład przez FTP, SFTP albo Git.
+2. Upewnij się, że hosting obsługuje PHP 8.1+ oraz ma włączone rozszerzenie `curl`.
+3. Umieść projekt w katalogu domeny lub subdomeny, tak aby plik `index.php` był dostępny z poziomu przeglądarki.
+4. Sprawdź, czy katalogi `storage/cache/` oraz `storage/sessions/` mają możliwość zapisu po stronie serwera.
+5. Otwórz adres swojej strony i zaloguj się danymi do konta Pstryk.
 
-Nastepnie otworz `http://localhost:8090`.
+Jeśli korzystasz z hostingu współdzielonego, w większości przypadków wystarczy po prostu wrzucić cały katalog projektu do `public_html` lub do katalogu przypisanego do wybranej domeny.
 
 ## Struktura projektu
 
-- `index.php` - glowny widok aplikacji
+- `index.php` - główny widok aplikacji
 - `logout.php` - wylogowanie i czyszczenie sesji
 - `config/bootstrap.php` - start sesji, helpery i konfiguracja
 - `src/PstrykApiClient.php` - klient API Pstryk i Integrations API
 - `src/DateWindow.php` - zakresy czasu dla Europe/Warsaw
 - `assets/app.css` - style aplikacji
-- `assets/app.js` - wykres, przelaczanie tla, interakcje UI
-- `assets/img/` - logo i tla
+- `assets/app.js` - wykres, przełączanie tła, interakcje UI
+- `assets/img/` - logo i tła
 - `storage/cache/` - lokalny cache odpowiedzi API
 - `storage/sessions/` - sesje logowania po stronie serwera
 
-## Bezpieczenstwo i publikacja
+## Bezpieczeństwo i publikacja
 
-- haslo uzytkownika nie jest zapisywane w projekcie,
-- do repozytorium nie trafia cache API ani pliki sesji,
-- lokalne pliki systemowe `.DS_Store` sa ignorowane przez `.gitignore`.
-
-## GitHub
-
-Repo jest gotowe do wrzucenia. Przykladowe kroki:
-
-```bash
-cd /Users/paweltucki/Sites/localhost/pstryk-dashboard
-git init
-git add .
-git commit -m "Initial release of Pstryk Dashboard"
-git branch -M main
-git remote add origin git@github.com:hejsiri/pstryk-dashboard.git
-git push -u origin main
-```
+- hasło użytkownika nie jest zapisywane w projekcie,
+- do repozytorium nie trafia cache API ani pliki sesji.

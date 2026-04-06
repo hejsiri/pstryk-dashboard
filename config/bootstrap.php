@@ -44,3 +44,50 @@ function pstryk_save_client(PstrykApiClient $client): void
 {
     $_SESSION['pstryk_auth'] = $client->toSessionPayload();
 }
+
+function dashboard_visits_file_path(): string
+{
+    $dir = __DIR__ . '/../storage';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+
+    return $dir . '/visits.json';
+}
+
+function dashboard_visit_count(): int
+{
+    $path = dashboard_visits_file_path();
+    if (!is_file($path)) {
+        @file_put_contents($path, json_encode(['count' => 0], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    $handle = @fopen($path, 'c+');
+    if (!$handle) {
+        return 0;
+    }
+
+    try {
+        if (!flock($handle, LOCK_EX)) {
+            return 0;
+        }
+
+        $raw = stream_get_contents($handle);
+        $decoded = is_string($raw) ? json_decode($raw, true) : null;
+        $count = is_array($decoded) && isset($decoded['count']) ? max(0, (int) $decoded['count']) : 0;
+
+        if (empty($_SESSION['dashboard_visit_counted'])) {
+            $count++;
+            $_SESSION['dashboard_visit_counted'] = true;
+            ftruncate($handle, 0);
+            rewind($handle);
+            fwrite($handle, json_encode(['count' => $count], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            fflush($handle);
+        }
+
+        flock($handle, LOCK_UN);
+        return $count;
+    } finally {
+        fclose($handle);
+    }
+}
