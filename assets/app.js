@@ -420,7 +420,8 @@
             },
             scales: {
                 y: {
-                    beginAtZero: false,
+                    beginAtZero: true,
+                    min: 0,
                     grid: {
                         color: 'rgba(95, 90, 83, 0.14)',
                         drawBorder: false
