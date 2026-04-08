@@ -5,9 +5,11 @@
     const tomorrowFrames = data.tomorrowFrames || [];
     let secondsToPublish = Number(data.secondsToPublish || 0);
     const bgModeUrls = data.bgModeUrls || {};
+    const themeColorByMode = data.themeColorByMode || {};
     let currentBgMode = data.bgMode || 'auto';
     let currentBgUrl = null;
     let bgTransitionTimer = null;
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
 
     function hourLabel(iso) {
         if (!iso) return '';
@@ -50,6 +52,7 @@
     function applyBackgroundMode(mode) {
         const effectiveMode = mode === 'auto' ? autoBgModeForNow() : mode;
         const bgUrl = bgModeUrls[effectiveMode];
+        const themeColor = themeColorByMode[effectiveMode];
         if (typeof bgUrl === 'string' && bgUrl !== '') {
             if (currentBgUrl === null) {
                 currentBgUrl = bgUrl;
@@ -71,6 +74,9 @@
                     document.body.classList.remove('bg-no-transition');
                 }, 920);
             }
+        }
+        if (themeColorMeta && typeof themeColor === 'string' && themeColor !== '') {
+            themeColorMeta.setAttribute('content', themeColor);
         }
         document.body.classList.toggle('bg-night', effectiveMode === 'night');
     }

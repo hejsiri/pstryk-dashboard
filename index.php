@@ -110,6 +110,13 @@ $cssUrl = app_url('assets/app.css') . '?v=' . rawurlencode($assetVersion);
 $jsUrl = app_url('assets/app.js') . '?v=' . rawurlencode($assetVersion);
 $bgUrl = app_url($bgRelPath) . '?v=' . rawurlencode($assetVersion);
 $logoUrl = app_url('assets/img/Pstryk-logo.svg') . '?v=' . rawurlencode($assetVersion);
+$appleTouchIconUrl = app_url('assets/img/apple-touch-icon.png') . '?v=' . rawurlencode($assetVersion);
+$faviconIcoUrl = app_url('assets/img/favicon.ico') . '?v=' . rawurlencode($assetVersion);
+$favicon16Url = app_url('assets/img/favicon-16x16.png') . '?v=' . rawurlencode($assetVersion);
+$favicon32Url = app_url('assets/img/favicon-32x32.png') . '?v=' . rawurlencode($assetVersion);
+$icon192Url = app_url('assets/img/icon-192.png') . '?v=' . rawurlencode($assetVersion);
+$icon512Url = app_url('assets/img/icon-512.png') . '?v=' . rawurlencode($assetVersion);
+$manifestUrl = app_url('manifest.json') . '?v=' . rawurlencode($assetVersion);
 $logoutUrl = app_url('logout.php');
 $visitCount = dashboard_visit_count();
 
@@ -781,8 +788,19 @@ $tomorrowChartPoints = array_map(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Pstryk">
     <meta name="theme-color" content="<?= h($themeColor) ?>">
-    <meta name="apple-mobile-web-app-status-bar-style" content="<?= $activeBgMode === 'night' ? 'black-translucent' : 'default' ?>">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="<?= h($manifestUrl) ?>">
+    <link rel="icon" href="<?= h($faviconIcoUrl) ?>" sizes="any">
+    <link rel="shortcut icon" href="<?= h($faviconIcoUrl) ?>">
+    <link rel="icon" type="image/png" sizes="16x16" href="<?= h($favicon16Url) ?>">
+    <link rel="icon" type="image/png" sizes="32x32" href="<?= h($favicon32Url) ?>">
+    <link rel="apple-touch-icon" sizes="180x180" href="<?= h($appleTouchIconUrl) ?>">
+    <link rel="icon" type="image/png" sizes="192x192" href="<?= h($icon192Url) ?>">
+    <link rel="icon" type="image/png" sizes="512x512" href="<?= h($icon512Url) ?>">
     <title>Pstryk Dashboard</title>
     <link rel="stylesheet" href="<?= h($cssUrl) ?>">
 </head>
@@ -1022,7 +1040,8 @@ window.__PSTRYK_DASHBOARD__ = {
     tomorrowFrames: <?= json_encode($tomorrowChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     secondsToPublish: <?= (int) $secondsToPublish ?>,
     bgMode: <?= json_encode($bgMode, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
-    bgModeUrls: <?= json_encode($bgModeUrls, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>
+    bgModeUrls: <?= json_encode($bgModeUrls, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
+    themeColorByMode: <?= json_encode($themeColorByMode, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>
 };
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
