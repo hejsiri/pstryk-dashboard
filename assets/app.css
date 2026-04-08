@@ -7,6 +7,8 @@
     --accent-2: #f59e0b;
     --danger: #b91c1c;
     --line: #ddd2c2;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 * { box-sizing: border-box; }
@@ -76,13 +78,13 @@ body.bg-no-transition::after {
 
 .container {
     max-width: 1100px;
-    margin: 2rem auto;
-    padding: 1rem;
+    margin: 0 auto 2rem;
+    padding: calc(var(--safe-top) + 1rem) 1rem 1rem;
 }
 body.guest .container {
     min-height: 100dvh;
     margin: 0 auto;
-    padding: 0.8rem 1rem 0.6rem;
+    padding: calc(var(--safe-top) + 0.8rem) 1rem calc(var(--safe-bottom) + 0.6rem);
     display: flex;
     flex-direction: column;
 }
@@ -738,7 +740,8 @@ body.guest .footer {
     .toolbar-form select { min-width: 200px; max-width: 100%; }
     .toolbar-form input[type="password"] { min-width: 190px; max-width: 100%; }
     .login-center { min-height: calc(100vh - 130px); }
-    body.guest .container { padding: 0.6rem 0.75rem 0.45rem; }
+    .container { padding: calc(var(--safe-top) + 0.8rem) 0.75rem 1rem; }
+    body.guest .container { padding: calc(var(--safe-top) + 0.6rem) 0.75rem calc(var(--safe-bottom) + 0.45rem); }
     body.guest .login-center { min-height: 0; }
     .login-card {
         width: min(94vw, 420px);
