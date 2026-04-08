@@ -14,13 +14,17 @@
 * { box-sizing: border-box; }
 html {
     min-height: 100%;
-    background-color: var(--bg);
+    background: transparent;
 }
 body {
     margin: 0;
     font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
     color: var(--ink);
     background-color: var(--bg);
+    background-image: var(--dashboard-bg);
+    background-position: center center;
+    background-size: cover;
+    background-repeat: no-repeat;
     min-height: 100vh;
     min-height: 100svh;
     min-height: 100dvh;
@@ -37,7 +41,7 @@ body::before {
     right: 0;
     bottom: calc(env(safe-area-inset-bottom, 0px) * -1);
     left: 0;
-    z-index: -1;
+    z-index: -2;
     background-image: var(--dashboard-bg);
     background-position: center center;
     background-size: cover;
