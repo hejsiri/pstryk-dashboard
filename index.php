@@ -728,6 +728,20 @@ $bgModeUrls = [
     'evening' => app_url(selected_background_rel_path($warsawNow, 'evening')) . '?v=' . rawurlencode($assetVersion),
     'night' => app_url(selected_background_rel_path($warsawNow, 'night')) . '?v=' . rawurlencode($assetVersion),
 ];
+$themeColorByMode = [
+    'morning' => '#d8c5b5',
+    'day' => '#d9ddd8',
+    'evening' => '#d4b29a',
+    'night' => '#10151d',
+];
+$activeBgMode = $bgMode === 'auto' ? (
+    str_contains($bgRelPath, 'background-pstryk-dasboard-night.') ? 'night' : (
+        str_contains($bgRelPath, 'background-pstryk-dasboard-evening.') ? 'evening' : (
+            str_contains($bgRelPath, 'background-pstryk-dasboard-day.') ? 'day' : 'morning'
+        )
+    )
+) : $bgMode;
+$themeColor = $themeColorByMode[$activeBgMode] ?? $themeColorByMode['morning'];
 
 $todayFrames = $todayPricing['frames'] ?? [];
 $tomorrowFrames = $tomorrowPricing['frames'] ?? [];
@@ -767,6 +781,8 @@ $tomorrowChartPoints = array_map(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="<?= h($themeColor) ?>">
+    <meta name="apple-mobile-web-app-status-bar-style" content="<?= $activeBgMode === 'night' ? 'black-translucent' : 'default' ?>">
     <title>Pstryk Dashboard</title>
     <link rel="stylesheet" href="<?= h($cssUrl) ?>">
 </head>
