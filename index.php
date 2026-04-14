@@ -336,6 +336,22 @@ if ($client->hasAuth()) {
                     ];
                 }
 
+                $todaySellPricingResult = api_cached_call(
+                    $cachePrefix . ':pricing:sell:' . $todayStartIso . ':' . $todayEndIso,
+                    $cacheTtlSeconds,
+                    static fn() => $client->getPricingSell($todayStartIso, $todayEndIso),
+                    $forceRefresh
+                );
+                $todaySellPricing = is_array($todaySellPricingResult['data']) ? $todaySellPricingResult['data'] : [];
+
+                $tomorrowSellPricingResult = api_cached_call(
+                    $cachePrefix . ':pricing:sell:' . $tomorrowStartIso . ':' . $tomorrowEndIso,
+                    $cacheTtlSeconds,
+                    static fn() => $client->getPricingSell($tomorrowStartIso, $tomorrowEndIso),
+                    $forceRefresh
+                );
+                $tomorrowSellPricing = is_array($tomorrowSellPricingResult['data']) ? $tomorrowSellPricingResult['data'] : [];
+
                 $todayUsageResult = api_cached_call(
                     $cachePrefix . ':usage:' . $meterId . ':' . $todayStartIso . ':' . $todayEndIso,
                     $cacheTtlSeconds,
@@ -782,6 +798,20 @@ $tomorrowChartPoints = array_map(
     },
     $tomorrowFrames
 );
+$toChartPoint = static function (array $frame): array {
+    $priceGross = isset($frame['price_gross']) ? (float) $frame['price_gross'] : null;
+    $fullPrice = isset($frame['full_price']) ? (float) $frame['full_price'] : null;
+    $priceNet = isset($frame['price_net']) ? (float) $frame['price_net'] : null;
+    $displayBrutto = $priceGross ?? $fullPrice ?? ($priceNet !== null ? $priceNet * 1.23 : null);
+    return [
+        'start' => (string) ($frame['start'] ?? ''),
+        'end' => (string) ($frame['end'] ?? ''),
+        'display_price' => $displayBrutto,
+        'is_live' => !empty($frame['is_live']),
+    ];
+};
+$todaySellChartPoints = array_map($toChartPoint, $todaySellPricing['frames'] ?? []);
+$tomorrowSellChartPoints = array_map($toChartPoint, $tomorrowSellPricing['frames'] ?? []);
 ?>
 <!DOCTYPE html>
 <html lang="pl">
@@ -1007,19 +1037,28 @@ $tomorrowChartPoints = array_map(
 
     <footer class="footer">
         <?php if ($client->hasAuth()): ?>
-        <div class="bg-switcher">
-            <form method="post" class="bg-switcher-form">
-                <input type="hidden" name="action" value="set_bg_mode">
-                <?php foreach ($bgModeLabels as $modeKey => $modeLabel): ?>
-                    <button
-                        type="submit"
-                        name="bg_mode"
-                        value="<?= h($modeKey) ?>"
-                        data-mode="<?= h($modeKey) ?>"
-                        class="bg-switch-btn <?= $bgMode === $modeKey ? 'active' : '' ?>"
-                    ><?= h($modeLabel) ?></button>
-                <?php endforeach; ?>
-            </form>
+        <div class="footer-switchers">
+            <div class="bg-switcher">
+                <form method="post" class="bg-switcher-form">
+                    <input type="hidden" name="action" value="set_bg_mode">
+                    <?php foreach ($bgModeLabels as $modeKey => $modeLabel): ?>
+                        <button
+                            type="submit"
+                            name="bg_mode"
+                            value="<?= h($modeKey) ?>"
+                            data-mode="<?= h($modeKey) ?>"
+                            class="bg-switch-btn <?= $bgMode === $modeKey ? 'active' : '' ?>"
+                        ><?= h($modeLabel) ?></button>
+                    <?php endforeach; ?>
+                </form>
+            </div>
+            <div class="price-mode-switcher">
+                <div class="price-mode-form">
+                    <button type="button" data-price-mode="buy" class="price-mode-btn active">zakup</button>
+                    <button type="button" data-price-mode="sell" class="price-mode-btn">sprzedaż</button>
+                    <button type="button" data-price-mode="both" class="price-mode-btn">oba</button>
+                </div>
+            </div>
         </div>
         <?php endif; ?>
 
@@ -1038,6 +1077,8 @@ $tomorrowChartPoints = array_map(
 window.__PSTRYK_DASHBOARD__ = {
     todayFrames: <?= json_encode($todayChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     tomorrowFrames: <?= json_encode($tomorrowChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
+    todaySellFrames: <?= json_encode($todaySellChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
+    tomorrowSellFrames: <?= json_encode($tomorrowSellChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     secondsToPublish: <?= (int) $secondsToPublish ?>,
     bgMode: <?= json_encode($bgMode, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     bgModeUrls: <?= json_encode($bgModeUrls, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,

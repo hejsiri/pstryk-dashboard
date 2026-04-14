@@ -689,8 +689,8 @@ body.guest .footer {
     height: 14px;
     filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.42));
 }
+.footer-switchers { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin-right: auto; }
 .bg-switcher { display: flex; justify-content: center; }
-.footer .bg-switcher { margin-right: auto; }
 .bg-switcher-form {
     display: inline-flex;
     gap: 0.3rem;
@@ -716,6 +716,36 @@ body.guest .footer {
     line-height: 1;
 }
 .bg-switch-btn.active {
+    background: rgba(255, 255, 255, 0.82);
+    border-color: rgba(220, 210, 194, 0.9);
+    box-shadow: 0 3px 8px rgba(15, 18, 24, 0.12);
+}
+.price-mode-switcher { display: flex; justify-content: center; }
+.price-mode-form {
+    display: inline-flex;
+    gap: 0.3rem;
+    padding: 0.3rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.46);
+    border: 1px solid rgba(255, 255, 255, 0.56);
+    min-height: 38px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    align-items: center;
+}
+.price-mode-btn {
+    width: auto;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 0.35rem 0.7rem;
+    background: transparent;
+    color: #2e3238;
+    font-size: 0.82rem;
+    font-weight: 650;
+    line-height: 1;
+    cursor: pointer;
+}
+.price-mode-btn.active {
     background: rgba(255, 255, 255, 0.82);
     border-color: rgba(220, 210, 194, 0.9);
     box-shadow: 0 3px 8px rgba(15, 18, 24, 0.12);
