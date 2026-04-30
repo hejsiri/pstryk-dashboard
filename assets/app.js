@@ -269,6 +269,27 @@
         ctx.closePath();
     }
 
+    function applyYAxisBounds(values) {
+        const nums = values
+            .map(Number)
+            .filter(Number.isFinite);
+        const yScale = priceChart.options.scales.y;
+
+        if (!nums.length) {
+            yScale.min = 0;
+            yScale.suggestedMax = undefined;
+            return;
+        }
+
+        const rawMin = Math.min(...nums, 0);
+        const rawMax = Math.max(...nums, 0);
+        const span = rawMax - rawMin || Math.max(Math.abs(rawMax), 1);
+        const padding = span * 0.12;
+
+        yScale.min = rawMin < 0 ? rawMin - padding : 0;
+        yScale.suggestedMax = rawMax + padding;
+    }
+
     const livePriceBadgePlugin = {
         id: 'livePriceBadge',
         afterDatasetsDraw(chart) {
@@ -323,7 +344,9 @@
                     const minText = `min ${minValue.toFixed(2)} zł`;
                     const x = minElement.x;
                     const top = Math.min(minElement.y, minElement.base);
-                    const y = top - 18;
+                    const bottom = Math.max(minElement.y, minElement.base);
+                    const isNegative = minValue < 0;
+                    const y = isNegative ? bottom + 18 : top - 18;
 
                     ctx.save();
                     ctx.font = '700 11px "IBM Plex Sans", sans-serif';
@@ -427,7 +450,6 @@
             scales: {
                 y: {
                     beginAtZero: true,
-                    min: 0,
                     grid: {
                         color: 'rgba(95, 90, 83, 0.14)',
                         drawBorder: false
@@ -469,6 +491,7 @@
             priceChart.data.datasets[0].liveIndex = -1;
             priceChart.data.datasets[0].minIndex = -1;
             priceChart.options.plugins.tooltip.enabled = false;
+            applyYAxisBounds([0]);
             priceChart.update();
             return;
         }
@@ -503,6 +526,7 @@
         priceChart.data.datasets[0].minIndex = minIndex;
         priceChart.data.datasets[0].frameRanges = frameRanges;
         priceChart.options.plugins.tooltip.enabled = true;
+        applyYAxisBounds(values);
         priceChart.update();
     }
 
