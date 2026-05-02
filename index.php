@@ -89,6 +89,20 @@ $assetVersion = sha1(json_encode([
     'css_size' => @filesize($cssPath) ?: 0,
     'js_mtime' => @filemtime($jsPath) ?: 0,
     'js_size' => @filesize($jsPath) ?: 0,
+    'favicon_ico_mtime' => @filemtime(__DIR__ . '/assets/img/favicon.ico') ?: 0,
+    'favicon_ico_size' => @filesize(__DIR__ . '/assets/img/favicon.ico') ?: 0,
+    'favicon_svg_mtime' => @filemtime(__DIR__ . '/assets/img/favicon-source.svg') ?: 0,
+    'favicon_svg_size' => @filesize(__DIR__ . '/assets/img/favicon-source.svg') ?: 0,
+    'favicon_16_mtime' => @filemtime(__DIR__ . '/assets/img/favicon-16x16.png') ?: 0,
+    'favicon_16_size' => @filesize(__DIR__ . '/assets/img/favicon-16x16.png') ?: 0,
+    'favicon_32_mtime' => @filemtime(__DIR__ . '/assets/img/favicon-32x32.png') ?: 0,
+    'favicon_32_size' => @filesize(__DIR__ . '/assets/img/favicon-32x32.png') ?: 0,
+    'icon_192_mtime' => @filemtime(__DIR__ . '/assets/img/icon-192.png') ?: 0,
+    'icon_192_size' => @filesize(__DIR__ . '/assets/img/icon-192.png') ?: 0,
+    'icon_512_mtime' => @filemtime(__DIR__ . '/assets/img/icon-512.png') ?: 0,
+    'icon_512_size' => @filesize(__DIR__ . '/assets/img/icon-512.png') ?: 0,
+    'apple_touch_icon_mtime' => @filemtime(__DIR__ . '/assets/img/apple-touch-icon.png') ?: 0,
+    'apple_touch_icon_size' => @filesize(__DIR__ . '/assets/img/apple-touch-icon.png') ?: 0,
     'bg_default_mtime' => @filemtime($bgDefaultPath) ?: 0,
     'bg_day_mtime' => @filemtime($bgDayPath) ?: 0,
     'bg_night_mtime' => @filemtime($bgNightPath) ?: 0,
@@ -113,6 +127,7 @@ $bgUrl = app_url($bgRelPath) . '?v=' . rawurlencode($assetVersion);
 $logoUrl = app_url('assets/img/Pstryk-logo.svg') . '?v=' . rawurlencode($assetVersion);
 $appleTouchIconUrl = app_url('assets/img/apple-touch-icon.png') . '?v=' . rawurlencode($assetVersion);
 $faviconIcoUrl = app_url('assets/img/favicon.ico') . '?v=' . rawurlencode($assetVersion);
+$faviconSvgUrl = app_url('assets/img/favicon-source.svg') . '?v=' . rawurlencode($assetVersion);
 $favicon16Url = app_url('assets/img/favicon-16x16.png') . '?v=' . rawurlencode($assetVersion);
 $favicon32Url = app_url('assets/img/favicon-32x32.png') . '?v=' . rawurlencode($assetVersion);
 $icon192Url = app_url('assets/img/icon-192.png') . '?v=' . rawurlencode($assetVersion);
@@ -824,6 +839,7 @@ if ($isDashboardDataRequest) {
     <link rel="manifest" href="<?= h($manifestUrl) ?>">
     <link rel="icon" href="<?= h($faviconIcoUrl) ?>" sizes="any">
     <link rel="shortcut icon" href="<?= h($faviconIcoUrl) ?>">
+    <link rel="icon" type="image/svg+xml" href="<?= h($faviconSvgUrl) ?>">
     <link rel="icon" type="image/png" sizes="16x16" href="<?= h($favicon16Url) ?>">
     <link rel="icon" type="image/png" sizes="32x32" href="<?= h($favicon32Url) ?>">
     <link rel="apple-touch-icon" sizes="180x180" href="<?= h($appleTouchIconUrl) ?>">

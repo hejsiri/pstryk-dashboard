@@ -166,6 +166,7 @@
                 label: 'Dzisiaj',
                 frames: todayFrames,
                 barColor: '#0f766e',
+                negativeBarColor: '#84cc16',
                 liveBarColor: '#f59e0b',
                 info: 'Dzisiejsze ceny godzinowe brutto energii.'
             }
@@ -177,6 +178,7 @@
                 label: 'Jutro',
                 frames: tomorrowFrames,
                 barColor: '#1e3a5f',
+                negativeBarColor: '#84cc16',
                 liveBarColor: '#f59e0b',
                 minBarColor: '#15803d',
                 info: 'Jutrzejsze ceny godzinowe brutto energii.'
@@ -599,8 +601,10 @@
         }
 
         const backgroundColors = frames.map((_, i) => {
+            const value = Number(values[i]);
             if (i === liveIndex) return view.liveBarColor;
             if (i === minIndex) return view.minBarColor || '#15803d';
+            if (Number.isFinite(value) && value < 0) return view.negativeBarColor || '#84cc16';
             return view.barColor;
         });
 
