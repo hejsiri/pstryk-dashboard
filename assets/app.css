@@ -826,6 +826,11 @@ body.guest .footer {
         align-items: center;
         flex-direction: column;
     }
+    .footer .chart-mode-switch {
+        margin-right: 0;
+        width: 100%;
+        justify-content: center;
+    }
     .footer-right {
         justify-content: center;
         width: 100%;
