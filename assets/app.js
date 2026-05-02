@@ -395,13 +395,13 @@
                     ctx.fill();
                     ctx.beginPath();
                     if (isNegative) {
-                        ctx.moveTo(pointerX - pointerW / 2, boxY);
-                        ctx.lineTo(pointerX + pointerW / 2, boxY);
-                        ctx.lineTo(pointerX, boxY - pointerH);
-                    } else {
                         ctx.moveTo(pointerX - pointerW / 2, boxY + boxH);
                         ctx.lineTo(pointerX + pointerW / 2, boxY + boxH);
                         ctx.lineTo(pointerX, boxY + boxH + pointerH);
+                    } else {
+                        ctx.moveTo(pointerX - pointerW / 2, boxY);
+                        ctx.lineTo(pointerX + pointerW / 2, boxY);
+                        ctx.lineTo(pointerX, boxY - pointerH);
                     }
                     ctx.closePath();
                     ctx.fill();
