@@ -20,6 +20,7 @@ $rawApiEntries = [];
 $selfUrl = strtok($_SERVER['REQUEST_URI'] ?? 'index.php', '?') ?: 'index.php';
 $showRawApi = (string) ($_GET['raw'] ?? '0') === '1';
 $forceRefresh = (string) ($_GET['refresh_api'] ?? '0') === '1';
+$isDashboardDataRequest = (string) ($_GET['dashboard_data'] ?? '0') === '1';
 $cacheTtlSeconds = 3600;
 $warsawNow = new DateTimeImmutable('now', new DateTimeZone('Europe/Warsaw'));
 $todayPublishAt = $warsawNow->setTime(13, 0, 0);
@@ -243,7 +244,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_b
     exit;
 }
 
-if ($client->hasAuth()) {
+if ($client->hasAuth() && ($isDashboardDataRequest || $showRawApi)) {
     try {
         $cachePrefix = 'user:' . (string) ($client->getUserId() ?? 'unknown');
         $metersResult = api_cached_call(
@@ -782,6 +783,33 @@ $tomorrowChartPoints = array_map(
     },
     $tomorrowFrames
 );
+$dashboardDataUrl = url_with_query(['dashboard_data' => '1']);
+
+if ($isDashboardDataRequest) {
+    header('Content-Type: application/json; charset=utf-8');
+    if (!$client->hasAuth()) {
+        http_response_code(401);
+        echo json_encode(['ok' => false, 'error' => 'Sesja wygasła. Zaloguj się ponownie.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    echo json_encode([
+        'ok' => $error === null,
+        'error' => $error,
+        'meters' => $meters,
+        'selectedMeterId' => isset($selectedMeter['id']) ? (int) $selectedMeter['id'] : null,
+        'metrics' => [
+            'todayUsage' => (float) ($todayUsage['fae_total_usage'] ?? 0),
+            'monthUsage' => (float) ($monthUsage['fae_total_usage'] ?? 0),
+            'todayCost' => (float) ($todayCost['total_sales_cost_net'] ?? 0),
+            'monthCost' => (float) ($monthCost['total_sales_cost_net'] ?? $monthCost['total_energy_cost_net'] ?? 0),
+        ],
+        'todayFrames' => $todayChartPoints,
+        'tomorrowFrames' => $tomorrowChartPoints,
+        'secondsToPublish' => (int) $secondsToPublish,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG);
+    exit;
+}
 ?>
 <!DOCTYPE html>
 <html lang="pl">
@@ -804,7 +832,7 @@ $tomorrowChartPoints = array_map(
     <title>Pstryk Dashboard</title>
     <link rel="stylesheet" href="<?= h($cssUrl) ?>">
 </head>
-<body class="<?= trim(($client->hasAuth() ? 'auth' : 'guest') . ($isNightBg ? ' bg-night' : '')) ?>" style="--dashboard-bg: url('<?= h($bgUrl) ?>');">
+<body class="<?= trim(($client->hasAuth() ? 'auth dashboard-loading' : 'guest') . ($isNightBg ? ' bg-night' : '')) ?>" style="--dashboard-bg: url('<?= h($bgUrl) ?>');">
 <div class="container">
     <?php if ($client->hasAuth()): ?>
         <div class="header">
@@ -834,6 +862,9 @@ $tomorrowChartPoints = array_map(
                     <form method="get" class="toolbar-form">
                         <span class="toolbar-label">Licznik:</span>
                         <select name="meter_id" id="meter_id" onchange="this.form.submit()">
+                            <?php if (empty($meters)): ?>
+                                <option value="">Ładowanie liczników...</option>
+                            <?php endif; ?>
                             <?php foreach ($meters as $meter): ?>
                                 <?php $id = (int) ($meter['id'] ?? 0); ?>
                                 <option value="<?= $id ?>" <?= ((int) ($selectedMeter['id'] ?? 0) === $id) ? 'selected' : '' ?>>
@@ -906,7 +937,7 @@ $tomorrowChartPoints = array_map(
                     </div>
                     <div class="metric-content">
                         <div class="label">zużycie dziś</div>
-                        <div class="value"><?= number_format((float) ($todayUsage['fae_total_usage'] ?? 0), 2, ',', ' ') ?> kWh</div>
+                        <div class="value is-loading" data-metric-value="todayUsage">...</div>
                     </div>
                 </div>
                 <div class="metric">
@@ -925,7 +956,7 @@ $tomorrowChartPoints = array_map(
                     </div>
                     <div class="metric-content">
                         <div class="label">zużycie miesiąc</div>
-                        <div class="value"><?= number_format((float) ($monthUsage['fae_total_usage'] ?? 0), 2, ',', ' ') ?> kWh</div>
+                        <div class="value is-loading" data-metric-value="monthUsage">...</div>
                     </div>
                 </div>
                 <div class="metric">
@@ -945,7 +976,7 @@ $tomorrowChartPoints = array_map(
                     </div>
                     <div class="metric-content">
                         <div class="label">Koszt dziś</div>
-                        <div class="value"><?= number_format((float) ($todayCost['total_sales_cost_net'] ?? 0), 2, ',', ' ') ?> zł</div>
+                        <div class="value is-loading" data-metric-value="todayCost">...</div>
                     </div>
                 </div>
                 <div class="metric">
@@ -965,7 +996,7 @@ $tomorrowChartPoints = array_map(
                     </div>
                     <div class="metric-content">
                         <div class="label">Koszt miesiąc</div>
-                        <div class="value"><?= number_format((float) ($monthCost['total_sales_cost_net'] ?? $monthCost['total_energy_cost_net'] ?? 0), 2, ',', ' ') ?> zł</div>
+                        <div class="value is-loading" data-metric-value="monthCost">...</div>
                     </div>
                 </div>
             </div>
@@ -982,6 +1013,10 @@ $tomorrowChartPoints = array_map(
                 </div>
             </div>
             <div class="chart-wrap">
+                <div class="chart-loader" id="chartLoader" aria-live="polite">
+                    <span class="loader-spinner" aria-hidden="true"></span>
+                    <span>Wczytywanie danych...</span>
+                </div>
                 <canvas id="priceChart"></canvas>
             </div>
             <div id="chartInfo" class="chart-info"></div>
@@ -1038,6 +1073,7 @@ $tomorrowChartPoints = array_map(
 window.__PSTRYK_DASHBOARD__ = {
     todayFrames: <?= json_encode($todayChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     tomorrowFrames: <?= json_encode($tomorrowChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
+    dashboardDataUrl: <?= json_encode($dashboardDataUrl, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     secondsToPublish: <?= (int) $secondsToPublish ?>,
     bgMode: <?= json_encode($bgMode, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     bgModeUrls: <?= json_encode($bgModeUrls, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,

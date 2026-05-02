@@ -1,9 +1,10 @@
 (function () {
     const data = window.__PSTRYK_DASHBOARD__ || {};
 
-    const todayFrames = data.todayFrames || [];
-    const tomorrowFrames = data.tomorrowFrames || [];
+    let todayFrames = data.todayFrames || [];
+    let tomorrowFrames = data.tomorrowFrames || [];
     let secondsToPublish = Number(data.secondsToPublish || 0);
+    const dashboardDataUrl = data.dashboardDataUrl || '';
     const bgModeUrls = data.bgModeUrls || {};
     const themeColorByMode = data.themeColorByMode || {};
     let currentBgMode = data.bgMode || 'auto';
@@ -158,32 +159,39 @@
     initSettingsMenu();
     startAutoBackgroundScheduler();
 
-    const views = [
-        {
-            key: 'today',
-            label: 'Dzisiaj',
-            frames: todayFrames,
-            barColor: '#0f766e',
-            liveBarColor: '#f59e0b',
-            info: 'Dzisiejsze ceny godzinowe brutto energii.'
-        }
-    ];
+    function createViews() {
+        const nextViews = [
+            {
+                key: 'today',
+                label: 'Dzisiaj',
+                frames: todayFrames,
+                barColor: '#0f766e',
+                liveBarColor: '#f59e0b',
+                info: 'Dzisiejsze ceny godzinowe brutto energii.'
+            }
+        ];
 
-    if (tomorrowFrames.length > 0) {
-        views.push({
-            key: 'tomorrow',
-            label: 'Jutro',
-            frames: tomorrowFrames,
-            barColor: '#1e3a5f',
-            liveBarColor: '#f59e0b',
-            minBarColor: '#15803d',
-            info: 'Jutrzejsze ceny godzinowe brutto energii.'
-        });
+        if (tomorrowFrames.length > 0) {
+            nextViews.push({
+                key: 'tomorrow',
+                label: 'Jutro',
+                frames: tomorrowFrames,
+                barColor: '#1e3a5f',
+                liveBarColor: '#f59e0b',
+                minBarColor: '#15803d',
+                info: 'Jutrzejsze ceny godzinowe brutto energii.'
+            });
+        }
+
+        return nextViews;
     }
+
+    let views = createViews();
 
     const chartEl = document.getElementById('priceChart');
     const chartTitleEl = document.getElementById('chartTitle');
     const chartInfoEl = document.getElementById('chartInfo');
+    const chartLoaderEl = document.getElementById('chartLoader');
     const prevBtn = document.getElementById('prevDayBtn');
     const nextBtn = document.getElementById('nextDayBtn');
     const countdownEl = document.getElementById('nextDayCountdown');
@@ -193,6 +201,60 @@
     }
 
     let currentViewIndex = 0;
+
+    function setDashboardLoading(isLoading) {
+        document.body.classList.toggle('dashboard-loading', isLoading);
+        document.body.classList.toggle('dashboard-loaded', !isLoading);
+        if (chartLoaderEl) {
+            chartLoaderEl.hidden = !isLoading;
+        }
+    }
+
+    function formatMetric(value, suffix) {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return `0,00 ${suffix}`;
+        return `${num.toLocaleString('pl-PL', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        })} ${suffix}`;
+    }
+
+    function setMetric(name, value, suffix) {
+        const el = document.querySelector(`[data-metric-value="${name}"]`);
+        if (!el) return;
+        el.textContent = formatMetric(value, suffix);
+        el.classList.remove('is-loading');
+    }
+
+    function updateMetrics(metrics) {
+        const values = metrics || {};
+        setMetric('todayUsage', values.todayUsage, 'kWh');
+        setMetric('monthUsage', values.monthUsage, 'kWh');
+        setMetric('todayCost', values.todayCost, 'zł');
+        setMetric('monthCost', values.monthCost, 'zł');
+    }
+
+    function updateMeterSelect(meters, selectedMeterId) {
+        const select = document.getElementById('meter_id');
+        if (!select || !Array.isArray(meters)) return;
+
+        select.replaceChildren();
+        meters.forEach((meter) => {
+            const id = Number(meter.id || 0);
+            const option = document.createElement('option');
+            option.value = String(id);
+            option.textContent = `${meter.name || 'Licznik'} (#${id})`;
+            option.selected = Number(selectedMeterId || 0) === id;
+            select.append(option);
+        });
+
+        if (!meters.length) {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'Brak liczników';
+            select.append(option);
+        }
+    }
 
     function isDesktopChart() {
         return window.matchMedia('(min-width: 701px)').matches;
@@ -540,6 +602,41 @@
         priceChart.update();
     }
 
+    async function loadDashboardData() {
+        if (!dashboardDataUrl) {
+            setDashboardLoading(false);
+            return;
+        }
+
+        setDashboardLoading(true);
+
+        try {
+            const response = await fetch(dashboardDataUrl, {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json' }
+            });
+            const payload = await response.json();
+
+            if (!response.ok || payload.ok === false) {
+                throw new Error(payload.error || 'Nie udało się pobrać danych.');
+            }
+
+            todayFrames = Array.isArray(payload.todayFrames) ? payload.todayFrames : [];
+            tomorrowFrames = Array.isArray(payload.tomorrowFrames) ? payload.tomorrowFrames : [];
+            secondsToPublish = Number(payload.secondsToPublish || secondsToPublish || 0);
+            views = createViews();
+            currentViewIndex = Math.min(currentViewIndex, views.length - 1);
+
+            updateMetrics(payload.metrics);
+            updateMeterSelect(payload.meters, payload.selectedMeterId);
+            renderView(currentViewIndex);
+        } catch (error) {
+            chartInfoEl.textContent = error.message || 'Nie udało się pobrać danych.';
+        } finally {
+            setDashboardLoading(false);
+        }
+    }
+
     prevBtn.addEventListener('click', () => {
         if (currentViewIndex > 0) {
             currentViewIndex -= 1;
@@ -567,4 +664,5 @@
     });
 
     renderView(currentViewIndex);
+    loadDashboardData();
 })();
