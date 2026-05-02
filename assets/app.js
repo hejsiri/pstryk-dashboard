@@ -386,9 +386,24 @@
                     const centeredBoxX = x - (boxW / 2);
                     const boxX = Math.min(Math.max(centeredBoxX, chartLeft), chartRight - boxW);
                     const boxY = y - (boxH / 2);
+                    const pointerX = Math.min(Math.max(x, boxX + 14), boxX + boxW - 14);
+                    const pointerW = 12;
+                    const pointerH = 7;
 
                     ctx.fillStyle = '#b91c1c';
                     drawRoundedRect(ctx, boxX, boxY, boxW, boxH, 11);
+                    ctx.fill();
+                    ctx.beginPath();
+                    if (isNegative) {
+                        ctx.moveTo(pointerX - pointerW / 2, boxY);
+                        ctx.lineTo(pointerX + pointerW / 2, boxY);
+                        ctx.lineTo(pointerX, boxY - pointerH);
+                    } else {
+                        ctx.moveTo(pointerX - pointerW / 2, boxY + boxH);
+                        ctx.lineTo(pointerX + pointerW / 2, boxY + boxH);
+                        ctx.lineTo(pointerX, boxY + boxH + pointerH);
+                    }
+                    ctx.closePath();
                     ctx.fill();
 
                     ctx.fillStyle = '#ffffff';
