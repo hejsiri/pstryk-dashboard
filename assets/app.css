@@ -105,6 +105,8 @@ body.guest .container {
     display: inline-flex;
     align-items: center;
     gap: 0.55rem;
+    text-decoration: none;
+    color: inherit;
 }
 .brand-logo {
     height: 36px;

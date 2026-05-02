@@ -127,6 +127,7 @@ $cssUrl = app_url('assets/app.css') . '?v=' . rawurlencode($assetVersion);
 $jsUrl = app_url('assets/app.js') . '?v=' . rawurlencode($assetVersion);
 $bgUrl = app_url($bgRelPath) . '?v=' . rawurlencode($assetVersion);
 $logoUrl = app_url('assets/img/Pstryk-logo.svg') . '?v=' . rawurlencode($assetVersion);
+$homeUrl = app_url('index.php');
 $appleTouchIconUrl = app_url('assets/img/apple-touch-icon.png') . '?v=' . rawurlencode($assetVersion);
 $faviconIcoUrl = app_url('assets/img/favicon.ico') . '?v=' . rawurlencode($assetVersion);
 $faviconSvgUrl = app_url('assets/img/favicon-source.svg') . '?v=' . rawurlencode($assetVersion);
@@ -893,7 +894,7 @@ if ($isDashboardDataRequest) {
 <div class="container">
     <?php if ($client->hasAuth()): ?>
         <div class="header">
-            <div class="brand"><img src="<?= h($logoUrl) ?>" alt="Pstryk" class="brand-logo"><span class="brand-suffix">Dashboard</span></div>
+            <a class="brand" href="<?= h($homeUrl) ?>" aria-label="Pstryk Dashboard - strona główna"><img src="<?= h($logoUrl) ?>" alt="Pstryk" class="brand-logo"><span class="brand-suffix">Dashboard</span></a>
             <div class="header-actions">
                 <a class="link-btn logout-link top-logout-link" href="<?= h($logoutUrl) ?>">
                     <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
