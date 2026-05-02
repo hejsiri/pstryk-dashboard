@@ -295,17 +295,17 @@
         afterDatasetsDraw(chart) {
             const dataset = chart.data.datasets[0];
             if (!dataset) return;
-            const liveIndex = dataset.liveIndex;
+            const selectedIndex = dataset.selectedIndex;
             const minIndex = dataset.minIndex;
             const meta = chart.getDatasetMeta(0);
             if (!meta || !meta.data) return;
 
             const ctx = chart.ctx;
 
-            if (typeof liveIndex === 'number' && liveIndex >= 0) {
-                const element = meta.data[liveIndex];
+            if (typeof selectedIndex === 'number' && selectedIndex >= 0) {
+                const element = meta.data[selectedIndex];
                 if (element) {
-                    const value = Number(dataset.data[liveIndex] || 0);
+                    const value = Number(dataset.data[selectedIndex] || 0);
                     const text = `${value.toFixed(2)} zł`;
                     const x = element.x;
                     const top = Math.min(element.y, element.base);
@@ -314,19 +314,19 @@
                     const y = isNegative ? (top - 16) : (bottom + 16);
 
                     ctx.save();
-                    ctx.font = '700 12px "IBM Plex Sans", sans-serif';
+                    ctx.font = '800 15px "IBM Plex Sans", sans-serif';
                     const textW = ctx.measureText(text).width;
-                    const padX = 10;
+                    const padX = 12;
                     const boxW = textW + padX * 2;
-                    const boxH = 24;
+                    const boxH = 30;
                     const chartLeft = (chart.chartArea?.left ?? 0) + 4;
                     const chartRight = (chart.chartArea?.right ?? chart.width) - 4;
                     const centeredBoxX = x - (boxW / 2);
                     const boxX = Math.min(Math.max(centeredBoxX, chartLeft), chartRight - boxW);
                     const boxY = y - (boxH / 2);
 
-                    ctx.fillStyle = isNegative ? '#b45309' : '#0f766e';
-                    drawRoundedRect(ctx, boxX, boxY, boxW, boxH, 10);
+                    ctx.fillStyle = '#b91c1c';
+                    drawRoundedRect(ctx, boxX, boxY, boxW, boxH, 11);
                     ctx.fill();
 
                     ctx.fillStyle = '#ffffff';
@@ -337,7 +337,7 @@
                 }
             }
 
-            if (typeof minIndex === 'number' && minIndex >= 0) {
+            if (typeof minIndex === 'number' && minIndex >= 0 && minIndex !== selectedIndex) {
                 const minElement = meta.data[minIndex];
                 if (minElement) {
                     const minValue = Number(dataset.data[minIndex] || 0);
@@ -435,16 +435,24 @@
             plugins: {
                 legend: { display: false },
                 tooltip: {
-                    displayColors: false,
-                    callbacks: {
-                        title: (items) => {
-                            if (!items || items.length === 0) return '';
-                            const item = items[0];
-                            const frameRanges = item.dataset.frameRanges || [];
-                            return frameRanges[item.dataIndex] || '';
-                        },
-                        label: (ctx) => `${ctx.parsed.y.toFixed(2)} zł`
-                    }
+                    enabled: false
+                }
+            },
+            onClick: (event, elements, chart) => {
+                const hits = elements.length
+                    ? elements
+                    : chart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true);
+                const hit = hits[0];
+                const dataset = chart.data.datasets[0];
+
+                if (!hit || !dataset) return;
+
+                dataset.selectedIndex = hit.index;
+                chart.update('none');
+            },
+            onHover: (event, elements) => {
+                if (event.native?.target) {
+                    event.native.target.style.cursor = elements.length ? 'pointer' : 'default';
                 }
             },
             scales: {
@@ -489,6 +497,7 @@
             priceChart.data.datasets[0].borderColor = [view.barColor];
             priceChart.data.datasets[0].backgroundColor = [view.barColor];
             priceChart.data.datasets[0].liveIndex = -1;
+            priceChart.data.datasets[0].selectedIndex = -1;
             priceChart.data.datasets[0].minIndex = -1;
             priceChart.options.plugins.tooltip.enabled = false;
             applyYAxisBounds([0]);
@@ -523,9 +532,10 @@
         priceChart.data.datasets[0].borderColor = backgroundColors;
         priceChart.data.datasets[0].backgroundColor = backgroundColors;
         priceChart.data.datasets[0].liveIndex = liveIndex;
+        priceChart.data.datasets[0].selectedIndex = liveIndex;
         priceChart.data.datasets[0].minIndex = minIndex;
         priceChart.data.datasets[0].frameRanges = frameRanges;
-        priceChart.options.plugins.tooltip.enabled = true;
+        priceChart.options.plugins.tooltip.enabled = false;
         applyYAxisBounds(values);
         priceChart.update();
     }
