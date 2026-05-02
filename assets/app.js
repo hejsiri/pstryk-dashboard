@@ -373,7 +373,8 @@
                     const top = Math.min(element.y, element.base);
                     const bottom = Math.max(element.y, element.base);
                     const isNegative = value < 0;
-                    const y = isNegative ? (top - 16) : (bottom + 16);
+                    const pointerH = 7;
+                    const y = isNegative ? (top - 16 - pointerH) : (bottom + 16 + pointerH);
 
                     ctx.save();
                     ctx.font = '800 15px "IBM Plex Sans", sans-serif';
@@ -388,7 +389,6 @@
                     const boxY = y - (boxH / 2);
                     const pointerX = Math.min(Math.max(x, boxX + 14), boxX + boxW - 14);
                     const pointerW = 12;
-                    const pointerH = 7;
 
                     ctx.fillStyle = '#b91c1c';
                     drawRoundedRect(ctx, boxX, boxY, boxW, boxH, 11);
