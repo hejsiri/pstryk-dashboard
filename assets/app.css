@@ -678,7 +678,8 @@ th, td {
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    gap: 0.6rem;
+    column-gap: 0.35rem;
+    row-gap: 0.6rem;
     flex-wrap: wrap;
 }
 body.guest .footer {
@@ -724,8 +725,10 @@ body.guest .footer {
     height: 14px;
     filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.42));
 }
-.bg-switcher { display: flex; justify-content: center; }
-.footer .bg-switcher { margin-right: auto; }
+.bg-switcher,
+.chart-mode-switch { display: flex; justify-content: center; }
+.footer .bg-switcher { margin-right: 0; }
+.footer .chart-mode-switch { margin-right: auto; }
 .bg-switcher-form {
     display: inline-flex;
     gap: 0.3rem;

@@ -3,6 +3,8 @@
 
     let todayFrames = data.todayFrames || [];
     let tomorrowFrames = data.tomorrowFrames || [];
+    let todaySellFrames = data.todaySellFrames || [];
+    let tomorrowSellFrames = data.tomorrowSellFrames || [];
     let secondsToPublish = Number(data.secondsToPublish || 0);
     const dashboardDataUrl = data.dashboardDataUrl || '';
     const bgModeUrls = data.bgModeUrls || {};
@@ -10,6 +12,7 @@
     let currentBgMode = data.bgMode || 'auto';
     let currentBgUrl = null;
     let bgTransitionTimer = null;
+    const chartModeStorageKey = 'pstrykDashboardChartMode';
     const themeColorMeta = document.querySelector('meta[name="theme-color"]');
 
     function hourLabel(iso) {
@@ -165,10 +168,12 @@
                 key: 'today',
                 label: 'Dzisiaj',
                 frames: todayFrames,
+                sellFrames: todaySellFrames,
                 barColor: '#0f766e',
                 negativeBarColor: '#84cc16',
+                sellColor: '#14532d',
                 liveBarColor: '#f59e0b',
-                info: 'Dzisiejsze ceny godzinowe brutto energii.'
+                info: 'Dzisiejsze ceny godzinowe brutto energii: zakup jako słupki, sprzedaż jako linia.'
             }
         ];
 
@@ -177,11 +182,13 @@
                 key: 'tomorrow',
                 label: 'Jutro',
                 frames: tomorrowFrames,
+                sellFrames: tomorrowSellFrames,
                 barColor: '#1e3a5f',
                 negativeBarColor: '#84cc16',
+                sellColor: '#14532d',
                 liveBarColor: '#f59e0b',
                 minBarColor: '#15803d',
-                info: 'Jutrzejsze ceny godzinowe brutto energii.'
+                info: 'Jutrzejsze ceny godzinowe brutto energii: zakup jako słupki, sprzedaż jako linia.'
             });
         }
 
@@ -194,6 +201,7 @@
     const chartTitleEl = document.getElementById('chartTitle');
     const chartInfoEl = document.getElementById('chartInfo');
     const chartLoaderEl = document.getElementById('chartLoader');
+    const chartModeButtons = Array.from(document.querySelectorAll('[data-chart-mode]'));
     const prevBtn = document.getElementById('prevDayBtn');
     const nextBtn = document.getElementById('nextDayBtn');
     const countdownEl = document.getElementById('nextDayCountdown');
@@ -203,6 +211,24 @@
     }
 
     let currentViewIndex = 0;
+    let chartMode = readStoredChartMode();
+
+    function readStoredChartMode() {
+        try {
+            const mode = window.localStorage.getItem(chartModeStorageKey);
+            return ['buy', 'sell', 'both'].includes(mode) ? mode : 'buy';
+        } catch (_) {
+            return 'buy';
+        }
+    }
+
+    function storeChartMode(mode) {
+        try {
+            window.localStorage.setItem(chartModeStorageKey, mode);
+        } catch (_) {
+            // Ignore storage failures; the switch still works for this session.
+        }
+    }
 
     function setDashboardLoading(isLoading) {
         document.body.classList.toggle('dashboard-loading', isLoading);
@@ -333,6 +359,18 @@
         ctx.closePath();
     }
 
+    function drawBottomRoundedRect(ctx, x, y, w, h, r) {
+        const radius = Math.min(r, w / 2, h);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + w, y);
+        ctx.lineTo(x + w, y + h - radius);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+        ctx.lineTo(x + radius, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+        ctx.closePath();
+    }
+
     function applyYAxisBounds(values) {
         const nums = values
             .map(Number)
@@ -354,6 +392,25 @@
         yScale.suggestedMax = rawMax + padding;
     }
 
+    function allChartValues() {
+        const values = [];
+        priceChart.data.datasets.forEach((dataset) => {
+            values.push(...(dataset.data || []));
+        });
+        return values;
+    }
+
+    function sellAreaGradient(chart) {
+        const chartArea = chart.chartArea;
+        if (!chartArea) return 'rgba(20, 83, 45, 0.1)';
+
+        const gradient = chart.ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+        gradient.addColorStop(0, 'rgba(20, 83, 45, 0.24)');
+        gradient.addColorStop(0.55, 'rgba(20, 83, 45, 0.1)');
+        gradient.addColorStop(1, 'rgba(20, 83, 45, 0)');
+        return gradient;
+    }
+
     const livePriceBadgePlugin = {
         id: 'livePriceBadge',
         afterDatasetsDraw(chart) {
@@ -365,22 +422,104 @@
             if (!meta || !meta.data) return;
 
             const ctx = chart.ctx;
+            let selectedBadgeBox = null;
 
             if (typeof selectedIndex === 'number' && selectedIndex >= 0) {
                 const element = meta.data[selectedIndex];
                 if (element) {
                     const value = Number(dataset.data[selectedIndex] || 0);
-                    const text = `${value.toFixed(2)} zł`;
-                    const x = element.x;
-                    const top = Math.min(element.y, element.base);
-                    const bottom = Math.max(element.y, element.base);
-                    const isNegative = value < 0;
+                    const sellDataset = chart.data.datasets[1];
+                    const sellValue = Number(sellDataset?.data?.[selectedIndex]);
+                    const showBuyValue = chart.isDatasetVisible(0) && Number.isFinite(value);
+                    const showSellValue = chart.isDatasetVisible(1) && Number.isFinite(sellValue);
+                    if (!showBuyValue && !showSellValue) return;
+                    const lines = showBuyValue && showSellValue
+                        ? [`zakup ${value.toFixed(2)} zł`, `sprzedaż ${sellValue.toFixed(2)} zł`]
+                        : (showSellValue ? [`sprzedaż ${sellValue.toFixed(2)} zł`] : [`zakup ${value.toFixed(2)} zł`]);
+                    const activeValue = showBuyValue ? value : sellValue;
+                    const activeMeta = chart.getDatasetMeta(showBuyValue ? 0 : 1);
+                    const activeElement = activeMeta?.data?.[selectedIndex] || element;
+                    const zeroY = chart.scales.y.getPixelForValue(0);
+                    const valueY = chart.scales.y.getPixelForValue(activeValue);
+                    const x = activeElement.x;
+                    const top = showBuyValue ? Math.min(valueY, zeroY) : valueY;
+                    const bottom = showBuyValue ? Math.max(valueY, zeroY) : valueY;
+                    const isNegative = activeValue < 0;
                     const pointerH = 7;
-                    const y = isNegative ? (top - 16 - pointerH) : (bottom + 16 + pointerH);
+                    const boxGap = 8;
 
                     ctx.save();
                     ctx.font = '800 15px "IBM Plex Sans", sans-serif';
-                    const textW = ctx.measureText(text).width;
+                    const textW = Math.max(...lines.map((line) => ctx.measureText(line).width));
+                    const padX = 12;
+                    const lineH = 18;
+                    const boxW = textW + padX * 2;
+                    const boxH = showSellValue ? 42 : 30;
+                    const y = isNegative
+                        ? (top - boxGap - pointerH - boxH / 2)
+                        : (bottom + boxGap + pointerH + boxH / 2);
+                    const chartLeft = (chart.chartArea?.left ?? 0) + 4;
+                    const chartRight = (chart.chartArea?.right ?? chart.width) - 4;
+                    const centeredBoxX = x - (boxW / 2);
+                    const boxX = Math.min(Math.max(centeredBoxX, chartLeft), chartRight - boxW);
+                    const boxY = y - (boxH / 2);
+                    selectedBadgeBox = { x: boxX, y: boxY, w: boxW, h: boxH };
+                    const pointerX = Math.min(Math.max(x, boxX + 14), boxX + boxW - 14);
+                    const pointerW = 12;
+
+                    ctx.fillStyle = '#b91c1c';
+                    drawRoundedRect(ctx, boxX, boxY, boxW, boxH, 11);
+                    ctx.fill();
+                    if (showSellValue && !showBuyValue) {
+                        ctx.fillStyle = '#14532d';
+                        drawRoundedRect(ctx, boxX, boxY, boxW, boxH, 11);
+                        ctx.fill();
+                    } else if (showSellValue) {
+                        ctx.fillStyle = '#14532d';
+                        drawBottomRoundedRect(ctx, boxX, boxY + boxH / 2, boxW, boxH / 2, 11);
+                        ctx.fill();
+                    }
+                    ctx.fillStyle = isNegative ? '#14532d' : (showSellValue && !showBuyValue ? '#14532d' : '#b91c1c');
+                    ctx.beginPath();
+                    if (isNegative) {
+                        ctx.moveTo(pointerX - pointerW / 2, boxY + boxH);
+                        ctx.lineTo(pointerX + pointerW / 2, boxY + boxH);
+                        ctx.lineTo(pointerX, boxY + boxH + pointerH);
+                    } else {
+                        ctx.moveTo(pointerX - pointerW / 2, boxY);
+                        ctx.lineTo(pointerX + pointerW / 2, boxY);
+                        ctx.lineTo(pointerX, boxY - pointerH);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.textAlign = showSellValue ? 'right' : 'left';
+                    ctx.textBaseline = 'alphabetic';
+                    const textStartY = y - ((lines.length - 1) * lineH / 2) + 5;
+                    lines.forEach((line, lineIndex) => {
+                        const textX = showSellValue ? boxX + boxW - padX : boxX + padX;
+                        ctx.fillText(line, textX, textStartY + lineIndex * lineH);
+                    });
+                    ctx.restore();
+                }
+            }
+
+            if (typeof minIndex === 'number' && minIndex >= 0 && minIndex !== selectedIndex) {
+                const minElement = meta.data[minIndex];
+                if (minElement) {
+                    const minValue = Number(dataset.data[minIndex] || 0);
+                    const minText = `min ${minValue.toFixed(2)} zł`;
+                    const x = minElement.x;
+                    const top = Math.min(minElement.y, minElement.base);
+                    const bottom = Math.max(minElement.y, minElement.base);
+                    const isNegative = minValue < 0;
+                    const pointerH = 7;
+                    const boxGap = 8;
+
+                    ctx.save();
+                    ctx.font = '800 15px "IBM Plex Sans", sans-serif';
+                    const textW = ctx.measureText(minText).width;
                     const padX = 12;
                     const boxW = textW + padX * 2;
                     const boxH = 30;
@@ -388,11 +527,22 @@
                     const chartRight = (chart.chartArea?.right ?? chart.width) - 4;
                     const centeredBoxX = x - (boxW / 2);
                     const boxX = Math.min(Math.max(centeredBoxX, chartLeft), chartRight - boxW);
-                    const boxY = y - (boxH / 2);
+                    let y = isNegative
+                        ? (top - boxGap - pointerH - boxH / 2)
+                        : (bottom + boxGap + pointerH + boxH / 2);
+                    let boxY = y - (boxH / 2);
+                    if (selectedBadgeBox) {
+                        const overlapsX = boxX < selectedBadgeBox.x + selectedBadgeBox.w && boxX + boxW > selectedBadgeBox.x;
+                        const overlapsY = boxY < selectedBadgeBox.y + selectedBadgeBox.h && boxY + boxH > selectedBadgeBox.y;
+                        if (overlapsX && overlapsY) {
+                            boxY = selectedBadgeBox.y - boxGap - pointerH - boxH;
+                            y = boxY + boxH / 2;
+                        }
+                    }
                     const pointerX = Math.min(Math.max(x, boxX + 14), boxX + boxW - 14);
                     const pointerW = 12;
 
-                    ctx.fillStyle = '#b91c1c';
+                    ctx.fillStyle = '#15803d';
                     drawRoundedRect(ctx, boxX, boxY, boxW, boxH, 11);
                     ctx.fill();
                     ctx.beginPath();
@@ -410,40 +560,8 @@
 
                     ctx.fillStyle = '#ffffff';
                     ctx.textAlign = 'left';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(text, boxX + padX, y + 0.5);
-                    ctx.restore();
-                }
-            }
-
-            if (typeof minIndex === 'number' && minIndex >= 0 && minIndex !== selectedIndex) {
-                const minElement = meta.data[minIndex];
-                if (minElement) {
-                    const minValue = Number(dataset.data[minIndex] || 0);
-                    const minText = `min ${minValue.toFixed(2)} zł`;
-                    const x = minElement.x;
-                    const top = Math.min(minElement.y, minElement.base);
-                    const bottom = Math.max(minElement.y, minElement.base);
-                    const isNegative = minValue < 0;
-                    const y = isNegative ? bottom + 18 : top - 18;
-
-                    ctx.save();
-                    ctx.font = '700 11px "IBM Plex Sans", sans-serif';
-                    const textW = ctx.measureText(minText).width;
-                    const padX = 8;
-                    const boxW = textW + padX * 2;
-                    const boxH = 22;
-                    const boxX = x - (boxW / 2);
-                    const boxY = y - (boxH / 2);
-
-                    ctx.fillStyle = '#15803d';
-                    drawRoundedRect(ctx, boxX, boxY, boxW, boxH, 9);
-                    ctx.fill();
-
-                    ctx.fillStyle = '#ffffff';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(minText, x, y + 0.5);
+                    ctx.textBaseline = 'alphabetic';
+                    ctx.fillText(minText, boxX + padX, y + 5);
                     ctx.restore();
                 }
             }
@@ -495,12 +613,31 @@
         data: {
             labels: [],
             datasets: [{
+                label: 'zakup',
+                type: 'bar',
                 data: [],
                 borderColor: '#0f766e',
                 backgroundColor: '#0f766e',
                 borderRadius: 8,
                 borderSkipped: false,
                 maxBarThickness: 26
+            }, {
+                label: 'sprzedaż',
+                type: 'line',
+                data: [],
+                borderColor: '#14532d',
+                backgroundColor: (ctx) => sellAreaGradient(ctx.chart),
+                borderWidth: 3,
+                borderDash: [],
+                pointBackgroundColor: '#fff7ed',
+                pointBorderColor: '#14532d',
+                pointBorderWidth: 2,
+                pointRadius: 3,
+                pointHoverRadius: 4,
+                tension: 0.32,
+                spanGaps: true,
+                fill: 'origin',
+                hidden: true
             }]
         },
         plugins: [glassBarsPlugin, livePriceBadgePlugin],
@@ -512,15 +649,20 @@
                 easing: 'easeOutQuart'
             },
             plugins: {
-                legend: { display: false },
+                legend: {
+                    display: false
+                },
                 tooltip: {
                     enabled: false
                 }
             },
             onClick: (event, elements, chart) => {
-                const hits = elements.length
+                let hits = elements.length
                     ? elements
                     : chart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true);
+                if (!hits.length) {
+                    hits = chart.getElementsAtEventForMode(event, 'index', { intersect: false }, true);
+                }
                 const hit = hits[0];
                 const dataset = chart.data.datasets[0];
 
@@ -560,6 +702,20 @@
         }
     });
 
+    function applyChartMode(mode, updateChart = true) {
+        chartMode = mode;
+        storeChartMode(mode);
+        priceChart.setDatasetVisibility(0, mode !== 'sell');
+        priceChart.setDatasetVisibility(1, mode !== 'buy');
+        chartModeButtons.forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.chartMode === mode);
+        });
+        applyYAxisBounds(allChartValues());
+        if (updateChart) {
+            priceChart.update();
+        }
+    }
+
     function renderView(index) {
         const view = views[index];
         const frames = view.frames || [];
@@ -575,6 +731,10 @@
             priceChart.data.datasets[0].data = [0];
             priceChart.data.datasets[0].borderColor = [view.barColor];
             priceChart.data.datasets[0].backgroundColor = [view.barColor];
+            priceChart.data.datasets[1].data = [];
+            priceChart.data.datasets[1].borderColor = view.sellColor;
+            priceChart.data.datasets[1].backgroundColor = (ctx) => sellAreaGradient(ctx.chart);
+            priceChart.data.datasets[1].pointBorderColor = view.sellColor;
             priceChart.data.datasets[0].liveIndex = -1;
             priceChart.data.datasets[0].selectedIndex = -1;
             priceChart.data.datasets[0].minIndex = -1;
@@ -586,6 +746,8 @@
 
         const labels = frames.map(f => hourAxisLabel(f.start));
         const values = frames.map(f => f.display_price);
+        const sellByStart = new Map((view.sellFrames || []).map(f => [String(f.start || ''), f.display_price]));
+        const sellValues = frames.map(f => sellByStart.has(String(f.start || '')) ? sellByStart.get(String(f.start || '')) : null);
         const frameRanges = frames.map(f => rangeLabel(f.start, f.end));
         const liveIndex = frames.findIndex(f => f.is_live);
         let minIndex = -1;
@@ -612,14 +774,24 @@
         priceChart.data.datasets[0].data = values;
         priceChart.data.datasets[0].borderColor = backgroundColors;
         priceChart.data.datasets[0].backgroundColor = backgroundColors;
+        priceChart.data.datasets[1].data = sellValues;
+        priceChart.data.datasets[1].borderColor = view.sellColor;
+        priceChart.data.datasets[1].backgroundColor = (ctx) => sellAreaGradient(ctx.chart);
+        priceChart.data.datasets[1].pointBorderColor = view.sellColor;
         priceChart.data.datasets[0].liveIndex = liveIndex;
         priceChart.data.datasets[0].selectedIndex = liveIndex;
         priceChart.data.datasets[0].minIndex = minIndex;
         priceChart.data.datasets[0].frameRanges = frameRanges;
         priceChart.options.plugins.tooltip.enabled = false;
-        applyYAxisBounds(values);
+        applyChartMode(chartMode, false);
         priceChart.update();
     }
+
+    chartModeButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            applyChartMode(btn.dataset.chartMode || 'buy');
+        });
+    });
 
     async function loadDashboardData() {
         if (!dashboardDataUrl) {
@@ -642,6 +814,8 @@
 
             todayFrames = Array.isArray(payload.todayFrames) ? payload.todayFrames : [];
             tomorrowFrames = Array.isArray(payload.tomorrowFrames) ? payload.tomorrowFrames : [];
+            todaySellFrames = Array.isArray(payload.todaySellFrames) ? payload.todaySellFrames : [];
+            tomorrowSellFrames = Array.isArray(payload.tomorrowSellFrames) ? payload.tomorrowSellFrames : [];
             secondsToPublish = Number(payload.secondsToPublish || secondsToPublish || 0);
             views = createViews();
             currentViewIndex = Math.min(currentViewIndex, views.length - 1);

@@ -11,6 +11,8 @@ $meters = [];
 $selectedMeter = null;
 $todayPricing = [];
 $tomorrowPricing = [];
+$todaySellPricing = [];
+$tomorrowSellPricing = [];
 $todayUsage = [];
 $todayCost = [];
 $monthUsage = [];
@@ -352,6 +354,67 @@ if ($client->hasAuth() && ($isDashboardDataRequest || $showRawApi)) {
                     ];
                 }
 
+                $sellPricingFetchers = [
+                    [
+                        'target' => 'today',
+                        'title' => 'Ceny sprzedaży - dziś',
+                        'endpoint' => sprintf(
+                            'GET /api/prosumer-pricing/?window_start=%s&window_end=%s&resolution=hour',
+                            $todayStartIso,
+                            $todayEndIso
+                        ),
+                        'key' => $cachePrefix . ':pricing:sell:' . $todayStartIso . ':' . $todayEndIso,
+                        'fetch' => static fn() => $client->getPricingSell($todayStartIso, $todayEndIso),
+                    ],
+                    [
+                        'target' => 'tomorrow',
+                        'title' => 'Ceny sprzedaży - jutro',
+                        'endpoint' => sprintf(
+                            'GET /api/prosumer-pricing/?window_start=%s&window_end=%s&resolution=hour',
+                            $tomorrowStartIso,
+                            $tomorrowEndIso
+                        ),
+                        'key' => $cachePrefix . ':pricing:sell:' . $tomorrowStartIso . ':' . $tomorrowEndIso,
+                        'fetch' => static fn() => $client->getPricingSell($tomorrowStartIso, $tomorrowEndIso),
+                    ],
+                ];
+
+                foreach ($sellPricingFetchers as $item) {
+                    try {
+                        $result = api_cached_call($item['key'], $cacheTtlSeconds, $item['fetch'], $forceRefresh);
+                        $data = is_array($result['data']) ? $result['data'] : [];
+                        if ($item['target'] === 'today') {
+                            $todaySellPricing = $data;
+                        } else {
+                            $tomorrowSellPricing = $data;
+                        }
+                        if ($showRawApi) {
+                            $rawApiEntries[] = [
+                                'title' => $item['title'],
+                                'endpoint' => $item['endpoint'],
+                                'response' => $data,
+                                'meta' => $result['meta'],
+                            ];
+                        }
+                    } catch (Throwable $e) {
+                        if ($showRawApi) {
+                            $rawApiEntries[] = [
+                                'title' => $item['title'],
+                                'endpoint' => $item['endpoint'],
+                                'response' => ['error' => $e->getMessage()],
+                                'meta' => [
+                                    'from_cache' => false,
+                                    'stale' => false,
+                                    'age_seconds' => null,
+                                    'ttl_seconds' => $cacheTtlSeconds,
+                                    'fetched_at' => null,
+                                    'fetch_error' => $e->getMessage(),
+                                ],
+                            ];
+                        }
+                    }
+                }
+
                 $todayUsageResult = api_cached_call(
                     $cachePrefix . ':usage:' . $meterId . ':' . $todayStartIso . ':' . $todayEndIso,
                     $cacheTtlSeconds,
@@ -443,26 +506,6 @@ if ($client->hasAuth() && ($isDashboardDataRequest || $showRawApi)) {
                             'endpoint' => sprintf('GET /api/full-price-alerts/%d', $meterId),
                             'key' => $cachePrefix . ':alerts:' . $meterId,
                             'fetch' => static fn() => $client->getFullPriceAlerts($meterId),
-                        ],
-                        [
-                            'title' => 'Ceny sprzedaży - dziś',
-                            'endpoint' => sprintf(
-                                'GET /api/prosumer-pricing/?window_start=%s&window_end=%s&resolution=hour',
-                                $todayStartIso,
-                                $todayEndIso
-                            ),
-                            'key' => $cachePrefix . ':pricing:sell:' . $todayStartIso . ':' . $todayEndIso,
-                            'fetch' => static fn() => $client->getPricingSell($todayStartIso, $todayEndIso),
-                        ],
-                        [
-                            'title' => 'Ceny sprzedaży - jutro',
-                            'endpoint' => sprintf(
-                                'GET /api/prosumer-pricing/?window_start=%s&window_end=%s&resolution=hour',
-                                $tomorrowStartIso,
-                                $tomorrowEndIso
-                            ),
-                            'key' => $cachePrefix . ':pricing:sell:' . $tomorrowStartIso . ':' . $tomorrowEndIso,
-                            'fetch' => static fn() => $client->getPricingSell($tomorrowStartIso, $tomorrowEndIso),
                         ],
                         [
                             'title' => 'Zużycie energii - jutro',
@@ -766,10 +809,15 @@ $activeBgMode = $bgMode === 'auto' ? (
 ) : $bgMode;
 $themeColor = $themeColorByMode[$activeBgMode] ?? $themeColorByMode['morning'];
 
-$todayFrames = $todayPricing['frames'] ?? [];
-$tomorrowFrames = $tomorrowPricing['frames'] ?? [];
-$todayChartPoints = array_map(
-    static function (array $frame): array {
+function pricing_chart_points(array $pricing): array
+{
+    $frames = $pricing['frames'] ?? [];
+    if (!is_array($frames)) {
+        return [];
+    }
+
+    return array_map(
+        static function (array $frame): array {
         $priceGross = isset($frame['price_gross']) ? (float) $frame['price_gross'] : null;
         $fullPrice = isset($frame['full_price']) ? (float) $frame['full_price'] : null;
         $priceNet = isset($frame['price_net']) ? (float) $frame['price_net'] : null;
@@ -781,23 +829,14 @@ $todayChartPoints = array_map(
             'is_live' => !empty($frame['is_live']),
         ];
     },
-    $todayFrames
-);
-$tomorrowChartPoints = array_map(
-    static function (array $frame): array {
-        $priceGross = isset($frame['price_gross']) ? (float) $frame['price_gross'] : null;
-        $fullPrice = isset($frame['full_price']) ? (float) $frame['full_price'] : null;
-        $priceNet = isset($frame['price_net']) ? (float) $frame['price_net'] : null;
-        $displayBrutto = $priceGross ?? $fullPrice ?? ($priceNet !== null ? $priceNet * 1.23 : null);
-        return [
-            'start' => (string) ($frame['start'] ?? ''),
-            'end' => (string) ($frame['end'] ?? ''),
-            'display_price' => $displayBrutto,
-            'is_live' => !empty($frame['is_live']),
-        ];
-    },
-    $tomorrowFrames
-);
+        $frames
+    );
+}
+
+$todayChartPoints = pricing_chart_points($todayPricing);
+$tomorrowChartPoints = pricing_chart_points($tomorrowPricing);
+$todaySellChartPoints = pricing_chart_points($todaySellPricing);
+$tomorrowSellChartPoints = pricing_chart_points($tomorrowSellPricing);
 $dashboardDataUrl = url_with_query(['dashboard_data' => '1']);
 
 if ($isDashboardDataRequest) {
@@ -821,6 +860,8 @@ if ($isDashboardDataRequest) {
         ],
         'todayFrames' => $todayChartPoints,
         'tomorrowFrames' => $tomorrowChartPoints,
+        'todaySellFrames' => $todaySellChartPoints,
+        'tomorrowSellFrames' => $tomorrowSellChartPoints,
         'secondsToPublish' => (int) $secondsToPublish,
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG);
     exit;
@@ -1072,6 +1113,13 @@ if ($isDashboardDataRequest) {
                 <?php endforeach; ?>
             </form>
         </div>
+        <div class="chart-mode-switch" aria-label="Widoczne ceny na wykresie">
+            <div class="bg-switcher-form">
+                <button type="button" class="bg-switch-btn active" data-chart-mode="buy">zakup</button>
+                <button type="button" class="bg-switch-btn" data-chart-mode="sell">sprzedaż</button>
+                <button type="button" class="bg-switch-btn" data-chart-mode="both">razem</button>
+            </div>
+        </div>
         <?php endif; ?>
 
         <div class="footer-right">
@@ -1089,6 +1137,8 @@ if ($isDashboardDataRequest) {
 window.__PSTRYK_DASHBOARD__ = {
     todayFrames: <?= json_encode($todayChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     tomorrowFrames: <?= json_encode($tomorrowChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
+    todaySellFrames: <?= json_encode($todaySellChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
+    tomorrowSellFrames: <?= json_encode($tomorrowSellChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     dashboardDataUrl: <?= json_encode($dashboardDataUrl, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     secondsToPublish: <?= (int) $secondsToPublish ?>,
     bgMode: <?= json_encode($bgMode, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
