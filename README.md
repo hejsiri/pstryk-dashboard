@@ -6,6 +6,8 @@ Projekt powstał po to, aby w prosty i czytelny sposób wyświetlać dynamiczne 
 
 W pełni funkcjonalne demo projektu znajduje się pod adresem: https://www.hejsiri.pl/pstryk-dashboard/
 
+Historia zmian projektu znajduje się w pliku `CHANGELOG.md`.
+
 ## Zrzuty ekranu
 
 <table>

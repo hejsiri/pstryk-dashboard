@@ -17,6 +17,8 @@ $todayUsage = [];
 $todayCost = [];
 $monthUsage = [];
 $monthCost = [];
+$monthUsageDaily = [];
+$monthCostDaily = [];
 $latestUsageFrame = null;
 $rawApiEntries = [];
 $selfUrl = strtok($_SERVER['REQUEST_URI'] ?? 'index.php', '?') ?: 'index.php';
@@ -479,6 +481,14 @@ if ($client->hasAuth() && ($isDashboardDataRequest || $showRawApi)) {
                     ];
                 }
 
+                $monthUsageDailyResult = api_cached_call(
+                    $cachePrefix . ':usage:day:' . $meterId . ':' . $monthStartIso . ':' . $monthNowIso,
+                    $cacheTtlSeconds,
+                    static fn() => $client->getPowerUsage($meterId, $monthStartIso, $monthNowIso, 'day'),
+                    $forceRefresh
+                );
+                $monthUsageDaily = is_array($monthUsageDailyResult['data']) ? $monthUsageDailyResult['data'] : [];
+
                 $monthCostResult = api_cached_call(
                     $cachePrefix . ':cost:' . $meterId . ':' . $monthStartIso . ':' . $monthNowIso,
                     $cacheTtlSeconds,
@@ -499,6 +509,14 @@ if ($client->hasAuth() && ($isDashboardDataRequest || $showRawApi)) {
                         'meta' => $monthCostResult['meta'],
                     ];
                 }
+
+                $monthCostDailyResult = api_cached_call(
+                    $cachePrefix . ':cost:day:' . $meterId . ':' . $monthStartIso . ':' . $monthNowIso,
+                    $cacheTtlSeconds,
+                    static fn() => $client->getPowerCost($meterId, $monthStartIso, $monthNowIso, 'day'),
+                    $forceRefresh
+                );
+                $monthCostDaily = is_array($monthCostDailyResult['data']) ? $monthCostDailyResult['data'] : [];
 
                 if ($showRawApi) {
                     $rawFetchers = [
@@ -834,10 +852,176 @@ function pricing_chart_points(array $pricing): array
     );
 }
 
+function usage_frame_value(array $frame): ?float
+{
+    if (isset($frame['fae_usage'])) {
+        return (float) $frame['fae_usage'];
+    }
+    if (isset($frame['energy_balance'])) {
+        return (float) $frame['energy_balance'];
+    }
+    if (isset($frame['rae'])) {
+        return (float) $frame['rae'];
+    }
+
+    return null;
+}
+
+function cost_frame_value(array $frame): ?float
+{
+    if (isset($frame['sales_cost_net'])) {
+        return (float) $frame['sales_cost_net'];
+    }
+    if (isset($frame['total_sales_cost_net'])) {
+        return (float) $frame['total_sales_cost_net'];
+    }
+    if (isset($frame['fae_cost'])) {
+        return (float) $frame['fae_cost'];
+    }
+    if (isset($frame['energy_balance_value'])) {
+        return (float) $frame['energy_balance_value'];
+    }
+    if (isset($frame['energy_cost_net'])) {
+        return (float) $frame['energy_cost_net'];
+    }
+
+    return null;
+}
+
+function usage_chart_points(array $usage): array
+{
+    $frames = $usage['frames'] ?? [];
+    if (!is_array($frames)) {
+        return [];
+    }
+
+    return array_map(
+        static function (array $frame): array {
+            return [
+                'start' => (string) ($frame['start'] ?? ''),
+                'end' => (string) ($frame['end'] ?? ''),
+                'display_usage' => usage_frame_value($frame),
+                'is_live' => !empty($frame['is_live']),
+            ];
+        },
+        $frames
+    );
+}
+
+function cost_chart_points(array $cost): array
+{
+    $frames = $cost['frames'] ?? [];
+    if (!is_array($frames)) {
+        return [];
+    }
+
+    $rawValues = array_map(
+        static fn(array $frame): ?float => cost_frame_value($frame),
+        $frames
+    );
+
+    $rawTotal = array_reduce(
+        $rawValues,
+        static function (float $carry, ?float $value): float {
+            return $carry + ($value ?? 0.0);
+        },
+        0.0
+    );
+
+    $targetTotal = null;
+    foreach (['total_sales_cost_net', 'total_energy_cost_net', 'fae_total_cost', 'total_energy_balance_value'] as $summaryKey) {
+        if (isset($cost[$summaryKey])) {
+            $targetTotal = (float) $cost[$summaryKey];
+            break;
+        }
+    }
+
+    $scale = 1.0;
+    if ($targetTotal !== null && abs($rawTotal) > 0.000001) {
+        $scale = $targetTotal / $rawTotal;
+    }
+
+    return array_map(
+        static function (array $frame, int $index) use ($rawValues, $scale): array {
+            $displayCost = $rawValues[$index];
+            if ($displayCost !== null) {
+                $displayCost *= $scale;
+            }
+
+            return [
+                'start' => (string) ($frame['start'] ?? ''),
+                'end' => (string) ($frame['end'] ?? ''),
+                'display_cost' => $displayCost,
+                'is_live' => !empty($frame['is_live']),
+            ];
+        },
+        $frames,
+        array_keys($frames)
+    );
+}
+
+function aggregate_month_chart_points(array $source, callable $extractValue, string $displayKey): array
+{
+    $frames = $source['frames'] ?? [];
+    if (!is_array($frames) || $frames === []) {
+        return [];
+    }
+
+    $warsaw = new DateTimeZone('Europe/Warsaw');
+    $nowLocal = new DateTimeImmutable('now', $warsaw);
+    $targetMonth = $nowLocal->format('Y-m');
+    $buckets = [];
+
+    foreach ($frames as $frame) {
+        $startRaw = isset($frame['start']) ? (string) $frame['start'] : '';
+        if ($startRaw === '') {
+            continue;
+        }
+
+        try {
+            $startLocal = (new DateTimeImmutable($startRaw))->setTimezone($warsaw);
+        } catch (Exception) {
+            continue;
+        }
+
+        if ($startLocal->format('Y-m') !== $targetMonth) {
+            continue;
+        }
+
+        $dayKey = $startLocal->format('Y-m-d');
+        $value = $extractValue($frame);
+
+        if (!isset($buckets[$dayKey])) {
+            $dayStartLocal = $startLocal->setTime(0, 0, 0);
+            $buckets[$dayKey] = [
+                'start' => $dayStartLocal->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:sP'),
+                'end' => $dayStartLocal->modify('+1 day')->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:sP'),
+                $displayKey => 0.0,
+                'is_live' => false,
+            ];
+        }
+
+        if ($value !== null) {
+            $buckets[$dayKey][$displayKey] += $value;
+        }
+        if (!empty($frame['is_live'])) {
+            $buckets[$dayKey]['is_live'] = true;
+        }
+    }
+
+    ksort($buckets);
+
+    return array_values($buckets);
+}
+
 $todayChartPoints = pricing_chart_points($todayPricing);
 $tomorrowChartPoints = pricing_chart_points($tomorrowPricing);
 $todaySellChartPoints = pricing_chart_points($todaySellPricing);
 $tomorrowSellChartPoints = pricing_chart_points($tomorrowSellPricing);
+$todayUsageChartPoints = usage_chart_points($todayUsage);
+$todayCostChartPoints = cost_chart_points($todayCost);
+$monthUsageDailyChartPoints = aggregate_month_chart_points($monthUsage, 'usage_frame_value', 'display_usage');
+$monthCostDailyChartPoints = aggregate_month_chart_points($monthCost, 'cost_frame_value', 'display_cost');
 $dashboardDataUrl = url_with_query(['dashboard_data' => '1']);
 
 if ($isDashboardDataRequest) {
@@ -863,6 +1047,10 @@ if ($isDashboardDataRequest) {
         'tomorrowFrames' => $tomorrowChartPoints,
         'todaySellFrames' => $todaySellChartPoints,
         'tomorrowSellFrames' => $tomorrowSellChartPoints,
+        'todayUsageFrames' => $todayUsageChartPoints,
+        'todayCostFrames' => $todayCostChartPoints,
+        'monthUsageDailyFrames' => $monthUsageDailyChartPoints,
+        'monthCostDailyFrames' => $monthCostDailyChartPoints,
         'secondsToPublish' => (int) $secondsToPublish,
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG);
     exit;
@@ -979,7 +1167,7 @@ if ($isDashboardDataRequest) {
     <?php else: ?>
         <div class="card metrics-panel">
             <div class="metrics">
-                <div class="metric">
+                <div class="metric metric-action" data-chart-view="today-usage" role="button" tabindex="0" aria-pressed="false">
                     <div class="metric-icon-col">
                         <span class="metric-icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -998,26 +1186,7 @@ if ($isDashboardDataRequest) {
                         <div class="value is-loading" data-metric-value="todayUsage">...</div>
                     </div>
                 </div>
-                <div class="metric">
-                    <div class="metric-icon-col">
-                        <span class="metric-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                                <defs>
-                                    <mask id="cutout-bolt-2">
-                                        <rect width="24" height="24" fill="#fff"></rect>
-                                        <path d="M13.5 4.5L8.3 13h3.3L10.8 19l4.9-8h-3.1z" fill="#000"></path>
-                                    </mask>
-                                </defs>
-                                <circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.96)" mask="url(#cutout-bolt-2)"></circle>
-                            </svg>
-                        </span>
-                    </div>
-                    <div class="metric-content">
-                        <div class="label">zużycie miesiąc</div>
-                        <div class="value is-loading" data-metric-value="monthUsage">...</div>
-                    </div>
-                </div>
-                <div class="metric">
+                <div class="metric metric-action" data-chart-view="today-cost" role="button" tabindex="0" aria-pressed="false">
                     <div class="metric-icon-col">
                         <span class="metric-icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1037,7 +1206,26 @@ if ($isDashboardDataRequest) {
                         <div class="value is-loading" data-metric-value="todayCost">...</div>
                     </div>
                 </div>
-                <div class="metric">
+                <div class="metric metric-action" data-chart-view="month-usage" role="button" tabindex="0" aria-pressed="false">
+                    <div class="metric-icon-col">
+                        <span class="metric-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <defs>
+                                    <mask id="cutout-bolt-2">
+                                        <rect width="24" height="24" fill="#fff"></rect>
+                                        <path d="M13.5 4.5L8.3 13h3.3L10.8 19l4.9-8h-3.1z" fill="#000"></path>
+                                    </mask>
+                                </defs>
+                                <circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.96)" mask="url(#cutout-bolt-2)"></circle>
+                            </svg>
+                        </span>
+                    </div>
+                    <div class="metric-content">
+                        <div class="label">zużycie miesiąc</div>
+                        <div class="value is-loading" data-metric-value="monthUsage">...</div>
+                    </div>
+                </div>
+                <div class="metric metric-action" data-chart-view="month-cost" role="button" tabindex="0" aria-pressed="false">
                     <div class="metric-icon-col">
                         <span class="metric-icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1140,6 +1328,10 @@ window.__PSTRYK_DASHBOARD__ = {
     tomorrowFrames: <?= json_encode($tomorrowChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     todaySellFrames: <?= json_encode($todaySellChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     tomorrowSellFrames: <?= json_encode($tomorrowSellChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
+    todayUsageFrames: <?= json_encode($todayUsageChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
+    todayCostFrames: <?= json_encode($todayCostChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
+    monthUsageDailyFrames: <?= json_encode($monthUsageDailyChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
+    monthCostDailyFrames: <?= json_encode($monthCostDailyChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     dashboardDataUrl: <?= json_encode($dashboardDataUrl, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     secondsToPublish: <?= (int) $secondsToPublish ?>,
     bgMode: <?= json_encode($bgMode, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,

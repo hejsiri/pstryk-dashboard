@@ -5,6 +5,10 @@
     let tomorrowFrames = data.tomorrowFrames || [];
     let todaySellFrames = data.todaySellFrames || [];
     let tomorrowSellFrames = data.tomorrowSellFrames || [];
+    let todayUsageFrames = data.todayUsageFrames || [];
+    let todayCostFrames = data.todayCostFrames || [];
+    let monthUsageDailyFrames = data.monthUsageDailyFrames || [];
+    let monthCostDailyFrames = data.monthCostDailyFrames || [];
     let secondsToPublish = Number(data.secondsToPublish || 0);
     const dashboardDataUrl = data.dashboardDataUrl || '';
     const bgModeUrls = data.bgModeUrls || {};
@@ -15,18 +19,96 @@
     const chartModeStorageKey = 'pstrykDashboardChartMode';
     const themeColorMeta = document.querySelector('meta[name="theme-color"]');
 
+    function normalizeApiIso(iso) {
+        if (typeof iso !== 'string') return '';
+        return iso.includes(' ') ? iso.replace(' ', 'T') : iso;
+    }
+
+    function parseApiDate(iso) {
+        if (!iso) return null;
+        const normalized = normalizeApiIso(iso);
+        const date = new Date(normalized);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function warsawDateParts(date) {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Warsaw',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).formatToParts(date);
+        const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+        return {
+            year: Number(map.year),
+            month: Number(map.month),
+            day: Number(map.day)
+        };
+    }
+
     function hourLabel(iso) {
         if (!iso) return '';
-        const d = new Date(iso);
-        if (Number.isNaN(d.getTime())) return iso;
+        const d = parseApiDate(iso);
+        if (!d) return iso;
         return d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
     }
 
     function hourAxisLabel(iso) {
         if (!iso) return '';
-        const d = new Date(iso);
-        if (Number.isNaN(d.getTime())) return iso;
+        const d = parseApiDate(iso);
+        if (!d) return iso;
         return d.toLocaleTimeString('pl-PL', { hour: '2-digit' });
+    }
+
+    function dayAxisLabel(iso) {
+        if (!iso) return '';
+        const d = parseApiDate(iso);
+        if (!d) return iso;
+        return d.toLocaleDateString('pl-PL', { day: '2-digit', timeZone: 'Europe/Warsaw' });
+    }
+
+    function monthFrameTemplateFromNow() {
+        const now = new Date();
+        return {
+            year: now.getFullYear(),
+            monthIndex: now.getMonth(),
+            totalDays: new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+        };
+    }
+
+    function fillMonthFrames(frames, valueKey) {
+        const list = Array.isArray(frames) ? frames : [];
+        const template = monthFrameTemplateFromNow();
+        const byDay = new Map();
+
+        list.forEach((frame) => {
+            const date = parseApiDate(frame.start || '');
+            if (!date) return;
+            const parts = warsawDateParts(date);
+            byDay.set(parts.day, frame);
+            if (frame.start) {
+                template.year = parts.year;
+                template.monthIndex = parts.month - 1;
+                template.totalDays = new Date(template.year, template.monthIndex + 1, 0).getDate();
+            }
+        });
+
+        return Array.from({ length: template.totalDays }, (_, offset) => {
+            const day = offset + 1;
+            if (byDay.has(day)) {
+                return byDay.get(day);
+            }
+
+            const start = new Date(template.year, template.monthIndex, day, 0, 0, 0, 0);
+            const end = new Date(template.year, template.monthIndex, day + 1, 0, 0, 0, 0);
+            return {
+                start: start.toISOString(),
+                end: end.toISOString(),
+                [valueKey]: 0,
+                is_live: false,
+                is_projected: true
+            };
+        });
     }
 
     function rangeLabel(startIso, endIso) {
@@ -202,6 +284,10 @@
     const chartInfoEl = document.getElementById('chartInfo');
     const chartLoaderEl = document.getElementById('chartLoader');
     const chartModeButtons = Array.from(document.querySelectorAll('[data-chart-mode]'));
+    const todayUsageMetric = document.querySelector('[data-chart-view="today-usage"]');
+    const todayCostMetric = document.querySelector('[data-chart-view="today-cost"]');
+    const monthUsageMetric = document.querySelector('[data-chart-view="month-usage"]');
+    const monthCostMetric = document.querySelector('[data-chart-view="month-cost"]');
     const prevBtn = document.getElementById('prevDayBtn');
     const nextBtn = document.getElementById('nextDayBtn');
     const countdownEl = document.getElementById('nextDayCountdown');
@@ -212,6 +298,7 @@
 
     let currentViewIndex = 0;
     let chartMode = readStoredChartMode();
+    let chartView = 'prices';
 
     function readStoredChartMode() {
         try {
@@ -304,6 +391,25 @@
         priceChart.options.scales.x.ticks = xTicks;
     }
 
+    function setMetricChartView(view) {
+        const states = [
+            [todayUsageMetric, view === 'usage'],
+            [todayCostMetric, view === 'cost'],
+            [monthUsageMetric, view === 'month-usage'],
+            [monthCostMetric, view === 'month-cost']
+        ];
+
+        states.forEach(([metric, isActive]) => {
+            if (!metric) return;
+            metric.classList.toggle('is-active', isActive);
+            metric.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+    }
+
+    function setYAxisUnit(unit) {
+        priceChart.options.scales.y.ticks.callback = (v) => `${Number(v).toFixed(2)} ${unit}`;
+    }
+
     function formatCountdown(totalSeconds) {
         const h = Math.floor(totalSeconds / 3600);
         const m = Math.floor((totalSeconds % 3600) / 60);
@@ -315,6 +421,13 @@
     }
 
     function updateNavVisibility() {
+        if (chartView !== 'prices') {
+            prevBtn.style.display = 'none';
+            nextBtn.style.display = 'none';
+            countdownEl.style.display = 'none';
+            return;
+        }
+
         const onToday = currentViewIndex === 0;
         const hasTomorrow = views.length > 1;
         const beforePublish = secondsToPublish > 0;
@@ -433,9 +546,15 @@
                     const showBuyValue = chart.isDatasetVisible(0) && Number.isFinite(value);
                     const showSellValue = chart.isDatasetVisible(1) && Number.isFinite(sellValue);
                     if (!showBuyValue && !showSellValue) return;
+                    const buyLabel = dataset.badgeLabel || 'zakup';
+                    const buyUnit = dataset.badgeUnit || 'zł';
+                    const buyBadgeColor = dataset.badgeColor || '#b91c1c';
+                    const sellLabel = sellDataset?.badgeLabel || sellDataset?.label || 'sprzedaż';
+                    const sellUnit = sellDataset?.badgeUnit || 'zł';
+                    const sellBadgeColor = sellDataset?.badgeColor || '#14532d';
                     const lines = showBuyValue && showSellValue
-                        ? [`zakup ${value.toFixed(2)} zł`, `sprzedaż ${sellValue.toFixed(2)} zł`]
-                        : (showSellValue ? [`sprzedaż ${sellValue.toFixed(2)} zł`] : [`zakup ${value.toFixed(2)} zł`]);
+                        ? [`${buyLabel} ${value.toFixed(2)} ${buyUnit}`, `${sellLabel} ${sellValue.toFixed(2)} ${sellUnit}`]
+                        : (showSellValue ? [`${sellLabel} ${sellValue.toFixed(2)} ${sellUnit}`] : [`${buyLabel} ${value.toFixed(2)} ${buyUnit}`]);
                     const activeValue = showBuyValue ? value : sellValue;
                     const activeMeta = chart.getDatasetMeta(showBuyValue ? 0 : 1);
                     const activeElement = activeMeta?.data?.[selectedIndex] || element;
@@ -445,6 +564,7 @@
                     const top = showBuyValue ? Math.min(valueY, zeroY) : valueY;
                     const bottom = showBuyValue ? Math.max(valueY, zeroY) : valueY;
                     const isNegative = activeValue < 0;
+                    const placeBadgeAbove = isNegative || dataset.forceBadgeAbove === true;
                     const pointerH = 7;
                     const boxGap = 8;
 
@@ -455,15 +575,15 @@
                     const lineH = 18;
                     const boxW = textW + padX * 2;
                     const boxH = showSellValue ? 42 : 30;
-                    let y = isNegative
+                    let y = placeBadgeAbove
                         ? (top - boxGap - pointerH - boxH / 2)
                         : (bottom + boxGap + pointerH + boxH / 2);
                     const chartLeft = (chart.chartArea?.left ?? 0) + 4;
                     const chartRight = (chart.chartArea?.right ?? chart.width) - 4;
                     const centeredBoxX = x - (boxW / 2);
                     const boxX = Math.min(Math.max(centeredBoxX, chartLeft), chartRight - boxW);
-                    const minBoxY = (isNegative ? 4 : pointerH + 4);
-                    const maxBoxY = chart.height - boxH - (isNegative ? pointerH : 0) - 4;
+                    const minBoxY = (placeBadgeAbove ? 4 : pointerH + 4);
+                    const maxBoxY = chart.height - boxH - (placeBadgeAbove ? pointerH : 0) - 4;
                     let boxY = y - (boxH / 2);
                     boxY = Math.min(Math.max(boxY, minBoxY), maxBoxY);
                     y = boxY + boxH / 2;
@@ -471,21 +591,21 @@
                     const pointerX = Math.min(Math.max(x, boxX + 14), boxX + boxW - 14);
                     const pointerW = 12;
 
-                    ctx.fillStyle = '#b91c1c';
+                    ctx.fillStyle = buyBadgeColor;
                     drawRoundedRect(ctx, boxX, boxY, boxW, boxH, 11);
                     ctx.fill();
                     if (showSellValue && !showBuyValue) {
-                        ctx.fillStyle = '#14532d';
+                        ctx.fillStyle = sellBadgeColor;
                         drawRoundedRect(ctx, boxX, boxY, boxW, boxH, 11);
                         ctx.fill();
                     } else if (showSellValue) {
-                        ctx.fillStyle = '#14532d';
+                        ctx.fillStyle = sellBadgeColor;
                         drawBottomRoundedRect(ctx, boxX, boxY + boxH / 2, boxW, boxH / 2, 11);
                         ctx.fill();
                     }
-                    ctx.fillStyle = isNegative ? '#14532d' : (showSellValue && !showBuyValue ? '#14532d' : '#b91c1c');
+                    ctx.fillStyle = isNegative ? '#14532d' : (showSellValue && !showBuyValue ? sellBadgeColor : buyBadgeColor);
                     ctx.beginPath();
-                    if (isNegative) {
+                    if (placeBadgeAbove) {
                         ctx.moveTo(pointerX - pointerW / 2, boxY + boxH);
                         ctx.lineTo(pointerX + pointerW / 2, boxY + boxH);
                         ctx.lineTo(pointerX, boxY + boxH + pointerH);
@@ -714,6 +834,9 @@
     });
 
     function applyChartMode(mode, updateChart = true) {
+        if (chartView !== 'prices') {
+            renderView(currentViewIndex);
+        }
         chartMode = mode;
         storeChartMode(mode);
         priceChart.setDatasetVisibility(0, mode !== 'sell');
@@ -732,6 +855,9 @@
         const frames = view.frames || [];
         const dayWord = view.label.toLowerCase();
 
+        chartView = 'prices';
+        setMetricChartView('prices');
+        setYAxisUnit('zł');
         chartTitleEl.textContent = `Ceny energii ${dayWord}`;
         chartInfoEl.textContent = view.info;
         updateNavVisibility();
@@ -742,10 +868,20 @@
             priceChart.data.datasets[0].data = [0];
             priceChart.data.datasets[0].borderColor = [view.barColor];
             priceChart.data.datasets[0].backgroundColor = [view.barColor];
+            priceChart.data.datasets[0].badgeLabel = 'zakup';
+            priceChart.data.datasets[0].badgeUnit = 'zł';
+            priceChart.data.datasets[0].badgeColor = '#b91c1c';
+            priceChart.data.datasets[0].forceBadgeAbove = false;
             priceChart.data.datasets[1].data = [];
+            priceChart.data.datasets[1].label = 'sprzedaż';
             priceChart.data.datasets[1].borderColor = view.sellColor;
             priceChart.data.datasets[1].backgroundColor = (ctx) => sellAreaGradient(ctx.chart);
             priceChart.data.datasets[1].pointBorderColor = view.sellColor;
+            priceChart.data.datasets[1].badgeLabel = 'sprzedaż';
+            priceChart.data.datasets[1].badgeUnit = 'zł';
+            priceChart.data.datasets[1].badgeColor = '#14532d';
+            priceChart.data.datasets[1].yAxisID = 'y';
+            priceChart.data.datasets[1].fill = 'origin';
             priceChart.data.datasets[0].liveIndex = -1;
             priceChart.data.datasets[0].selectedIndex = -1;
             priceChart.data.datasets[0].minIndex = -1;
@@ -785,10 +921,20 @@
         priceChart.data.datasets[0].data = values;
         priceChart.data.datasets[0].borderColor = backgroundColors;
         priceChart.data.datasets[0].backgroundColor = backgroundColors;
+        priceChart.data.datasets[0].badgeLabel = 'zakup';
+        priceChart.data.datasets[0].badgeUnit = 'zł';
+        priceChart.data.datasets[0].badgeColor = '#b91c1c';
+        priceChart.data.datasets[0].forceBadgeAbove = false;
         priceChart.data.datasets[1].data = sellValues;
+        priceChart.data.datasets[1].label = 'sprzedaż';
         priceChart.data.datasets[1].borderColor = view.sellColor;
         priceChart.data.datasets[1].backgroundColor = (ctx) => sellAreaGradient(ctx.chart);
         priceChart.data.datasets[1].pointBorderColor = view.sellColor;
+        priceChart.data.datasets[1].badgeLabel = 'sprzedaż';
+        priceChart.data.datasets[1].badgeUnit = 'zł';
+        priceChart.data.datasets[1].badgeColor = '#14532d';
+        priceChart.data.datasets[1].yAxisID = 'y';
+        priceChart.data.datasets[1].fill = 'origin';
         priceChart.data.datasets[0].liveIndex = liveIndex;
         priceChart.data.datasets[0].selectedIndex = liveIndex;
         priceChart.data.datasets[0].minIndex = minIndex;
@@ -798,11 +944,367 @@
         priceChart.update();
     }
 
+    function renderUsageView() {
+        chartView = 'usage';
+        setMetricChartView('usage');
+        setYAxisUnit('kWh');
+        chartTitleEl.textContent = 'Zużycie energii dzisiaj';
+        chartInfoEl.textContent = 'Dzisiejsze godzinowe zużycie energii.';
+        prevBtn.style.display = 'none';
+        nextBtn.style.display = 'none';
+        countdownEl.style.display = 'none';
+        applyXAxisDensity();
+
+        const frames = Array.isArray(todayUsageFrames) ? todayUsageFrames : [];
+        if (!frames.length) {
+            priceChart.data.labels = ['Brak danych'];
+            priceChart.data.datasets[0].data = [0];
+            priceChart.data.datasets[0].borderColor = ['#0f766e'];
+            priceChart.data.datasets[0].backgroundColor = ['#0f766e'];
+            priceChart.data.datasets[0].badgeLabel = 'zużycie';
+            priceChart.data.datasets[0].badgeUnit = 'kWh';
+            priceChart.data.datasets[0].badgeColor = '#0f766e';
+            priceChart.data.datasets[0].forceBadgeAbove = true;
+            priceChart.data.datasets[0].liveIndex = -1;
+            priceChart.data.datasets[0].selectedIndex = -1;
+            priceChart.data.datasets[0].minIndex = -1;
+            priceChart.data.datasets[0].frameRanges = [];
+            priceChart.data.datasets[1].data = [];
+            priceChart.setDatasetVisibility(0, true);
+            priceChart.setDatasetVisibility(1, false);
+            applyYAxisBounds([0]);
+            priceChart.update();
+            return;
+        }
+
+        const labels = frames.map(f => hourAxisLabel(f.start));
+        const values = frames.map(f => f.display_usage);
+        const frameRanges = frames.map(f => rangeLabel(f.start, f.end));
+        const liveIndex = frames.findIndex(f => f.is_live);
+        const selectedIndex = liveIndex >= 0 ? liveIndex : -1;
+        const backgroundColors = values.map(() => '#0f766e');
+
+        priceChart.data.labels = labels;
+        priceChart.data.datasets[0].data = values;
+        priceChart.data.datasets[0].borderColor = backgroundColors;
+        priceChart.data.datasets[0].backgroundColor = backgroundColors;
+        priceChart.data.datasets[0].badgeLabel = 'zużycie';
+        priceChart.data.datasets[0].badgeUnit = 'kWh';
+        priceChart.data.datasets[0].badgeColor = '#0f766e';
+        priceChart.data.datasets[0].forceBadgeAbove = true;
+        priceChart.data.datasets[0].liveIndex = liveIndex;
+        priceChart.data.datasets[0].selectedIndex = selectedIndex;
+        priceChart.data.datasets[0].minIndex = -1;
+        priceChart.data.datasets[0].frameRanges = frameRanges;
+        priceChart.data.datasets[1].data = [];
+        priceChart.setDatasetVisibility(0, true);
+        priceChart.setDatasetVisibility(1, false);
+        priceChart.options.plugins.tooltip.enabled = false;
+        applyYAxisBounds(values);
+        priceChart.update();
+    }
+
+    function renderCostView() {
+        chartView = 'cost';
+        setMetricChartView('cost');
+        setYAxisUnit('zł');
+        chartTitleEl.textContent = 'Koszt energii dzisiaj';
+        chartInfoEl.textContent = 'Dzisiejszy godzinowy koszt energii.';
+        prevBtn.style.display = 'none';
+        nextBtn.style.display = 'none';
+        countdownEl.style.display = 'none';
+        applyXAxisDensity();
+
+        const frames = Array.isArray(todayCostFrames) ? todayCostFrames : [];
+        if (!frames.length) {
+            priceChart.data.labels = ['Brak danych'];
+            priceChart.data.datasets[0].data = [0];
+            priceChart.data.datasets[0].borderColor = ['#b91c1c'];
+            priceChart.data.datasets[0].backgroundColor = ['#b91c1c'];
+            priceChart.data.datasets[0].badgeLabel = 'koszt';
+            priceChart.data.datasets[0].badgeUnit = 'zł';
+            priceChart.data.datasets[0].badgeColor = '#b91c1c';
+            priceChart.data.datasets[0].forceBadgeAbove = true;
+            priceChart.data.datasets[0].liveIndex = -1;
+            priceChart.data.datasets[0].selectedIndex = -1;
+            priceChart.data.datasets[0].minIndex = -1;
+            priceChart.data.datasets[0].frameRanges = [];
+            priceChart.data.datasets[1].data = [];
+            priceChart.setDatasetVisibility(0, true);
+            priceChart.setDatasetVisibility(1, false);
+            applyYAxisBounds([0]);
+            priceChart.update();
+            return;
+        }
+
+        const labels = frames.map(f => hourAxisLabel(f.start));
+        const values = frames.map(f => f.display_cost);
+        const frameRanges = frames.map(f => rangeLabel(f.start, f.end));
+        const liveIndex = frames.findIndex(f => f.is_live);
+        const selectedIndex = liveIndex >= 0 ? liveIndex : -1;
+        const backgroundColors = values.map((value, index) => {
+            const numeric = Number(value);
+            if (index === liveIndex) return '#f59e0b';
+            if (Number.isFinite(numeric) && numeric < 0) return '#15803d';
+            return '#b91c1c';
+        });
+
+        priceChart.data.labels = labels;
+        priceChart.data.datasets[0].data = values;
+        priceChart.data.datasets[0].borderColor = backgroundColors;
+        priceChart.data.datasets[0].backgroundColor = backgroundColors;
+        priceChart.data.datasets[0].badgeLabel = 'koszt';
+        priceChart.data.datasets[0].badgeUnit = 'zł';
+        priceChart.data.datasets[0].badgeColor = '#b91c1c';
+        priceChart.data.datasets[0].forceBadgeAbove = true;
+        priceChart.data.datasets[0].liveIndex = liveIndex;
+        priceChart.data.datasets[0].selectedIndex = selectedIndex;
+        priceChart.data.datasets[0].minIndex = -1;
+        priceChart.data.datasets[0].frameRanges = frameRanges;
+        priceChart.data.datasets[1].data = [];
+        priceChart.setDatasetVisibility(0, true);
+        priceChart.setDatasetVisibility(1, false);
+        priceChart.options.plugins.tooltip.enabled = false;
+        applyYAxisBounds(values);
+        priceChart.update();
+    }
+
+    function renderMonthUsageView() {
+        chartView = 'month-usage';
+        setMetricChartView('month-usage');
+        setYAxisUnit('kWh');
+        chartTitleEl.textContent = 'Zużycie energii w miesiącu';
+        chartInfoEl.textContent = 'Dzienne zużycie energii od początku miesiąca.';
+        prevBtn.style.display = 'none';
+        nextBtn.style.display = 'none';
+        countdownEl.style.display = 'none';
+        applyXAxisDensity();
+
+        const usageFrames = fillMonthFrames(monthUsageDailyFrames, 'display_usage');
+
+        if (!usageFrames.length) {
+            priceChart.data.labels = ['Brak danych'];
+            priceChart.data.datasets[0].data = [0];
+            priceChart.data.datasets[0].borderColor = ['#0f766e'];
+            priceChart.data.datasets[0].backgroundColor = ['#0f766e'];
+            priceChart.data.datasets[0].badgeLabel = 'zużycie';
+            priceChart.data.datasets[0].badgeUnit = 'kWh';
+            priceChart.data.datasets[0].badgeColor = '#0f766e';
+            priceChart.data.datasets[0].forceBadgeAbove = true;
+            priceChart.data.datasets[0].liveIndex = -1;
+            priceChart.data.datasets[0].selectedIndex = -1;
+            priceChart.data.datasets[0].minIndex = -1;
+            priceChart.data.datasets[0].frameRanges = [];
+            priceChart.data.datasets[1].data = [];
+            priceChart.data.datasets[1].label = 'sprzedaż';
+            priceChart.data.datasets[1].borderColor = '#14532d';
+            priceChart.data.datasets[1].backgroundColor = (ctx) => sellAreaGradient(ctx.chart);
+            priceChart.data.datasets[1].pointBorderColor = '#14532d';
+            priceChart.data.datasets[1].badgeLabel = 'sprzedaż';
+            priceChart.data.datasets[1].badgeUnit = 'zł';
+            priceChart.data.datasets[1].badgeColor = '#14532d';
+            priceChart.data.datasets[1].fill = 'origin';
+            priceChart.setDatasetVisibility(0, true);
+            priceChart.setDatasetVisibility(1, false);
+            applyYAxisBounds([0]);
+            priceChart.update();
+            return;
+        }
+
+        const labels = usageFrames.map((frame) => dayAxisLabel(frame.start));
+        const usageValues = usageFrames.map((frame) => frame.display_usage);
+        const frameRanges = usageFrames.map((frame) => rangeLabel(frame.start, frame.end));
+        const selectedIndex = -1;
+
+        priceChart.data.labels = labels;
+        priceChart.data.datasets[0].data = usageValues;
+        priceChart.data.datasets[0].borderColor = usageValues.map(() => '#0f766e');
+        priceChart.data.datasets[0].backgroundColor = usageValues.map(() => '#0f766e');
+        priceChart.data.datasets[0].badgeLabel = 'zużycie';
+        priceChart.data.datasets[0].badgeUnit = 'kWh';
+        priceChart.data.datasets[0].badgeColor = '#0f766e';
+        priceChart.data.datasets[0].forceBadgeAbove = true;
+        priceChart.data.datasets[0].liveIndex = -1;
+        priceChart.data.datasets[0].selectedIndex = selectedIndex;
+        priceChart.data.datasets[0].minIndex = -1;
+        priceChart.data.datasets[0].frameRanges = frameRanges;
+        priceChart.data.datasets[1].data = [];
+        priceChart.data.datasets[1].label = 'sprzedaż';
+        priceChart.data.datasets[1].borderColor = '#14532d';
+        priceChart.data.datasets[1].backgroundColor = (ctx) => sellAreaGradient(ctx.chart);
+        priceChart.data.datasets[1].pointBorderColor = '#14532d';
+        priceChart.data.datasets[1].badgeLabel = 'sprzedaż';
+        priceChart.data.datasets[1].badgeUnit = 'zł';
+        priceChart.data.datasets[1].badgeColor = '#14532d';
+        priceChart.data.datasets[1].fill = 'origin';
+
+        priceChart.setDatasetVisibility(0, true);
+        priceChart.setDatasetVisibility(1, false);
+        priceChart.options.plugins.tooltip.enabled = false;
+        applyYAxisBounds(usageValues);
+        priceChart.update();
+    }
+
+    function renderMonthCostView() {
+        chartView = 'month-cost';
+        setMetricChartView('month-cost');
+        setYAxisUnit('zł');
+        chartTitleEl.textContent = 'Koszt energii w miesiącu';
+        chartInfoEl.textContent = 'Dzienny koszt energii od początku miesiąca.';
+        prevBtn.style.display = 'none';
+        nextBtn.style.display = 'none';
+        countdownEl.style.display = 'none';
+        applyXAxisDensity();
+
+        const frames = fillMonthFrames(monthCostDailyFrames, 'display_cost');
+        if (!frames.length) {
+            priceChart.data.labels = ['Brak danych'];
+            priceChart.data.datasets[0].data = [0];
+            priceChart.data.datasets[0].borderColor = ['#b91c1c'];
+            priceChart.data.datasets[0].backgroundColor = ['#b91c1c'];
+            priceChart.data.datasets[0].badgeLabel = 'koszt';
+            priceChart.data.datasets[0].badgeUnit = 'zł';
+            priceChart.data.datasets[0].badgeColor = '#b91c1c';
+            priceChart.data.datasets[0].forceBadgeAbove = true;
+            priceChart.data.datasets[0].liveIndex = -1;
+            priceChart.data.datasets[0].selectedIndex = -1;
+            priceChart.data.datasets[0].minIndex = -1;
+            priceChart.data.datasets[0].frameRanges = [];
+            priceChart.data.datasets[1].data = [];
+            priceChart.data.datasets[1].label = 'sprzedaż';
+            priceChart.data.datasets[1].borderColor = '#14532d';
+            priceChart.data.datasets[1].backgroundColor = (ctx) => sellAreaGradient(ctx.chart);
+            priceChart.data.datasets[1].pointBorderColor = '#14532d';
+            priceChart.data.datasets[1].badgeLabel = 'sprzedaż';
+            priceChart.data.datasets[1].badgeUnit = 'zł';
+            priceChart.data.datasets[1].badgeColor = '#14532d';
+            priceChart.data.datasets[1].fill = 'origin';
+            priceChart.setDatasetVisibility(0, true);
+            priceChart.setDatasetVisibility(1, false);
+            applyYAxisBounds([0]);
+            priceChart.update();
+            return;
+        }
+
+        const labels = frames.map((frame) => dayAxisLabel(frame.start));
+        const values = frames.map((frame) => frame.display_cost);
+        const frameRanges = frames.map((frame) => rangeLabel(frame.start, frame.end));
+        const selectedIndex = -1;
+        const backgroundColors = values.map((value) => {
+            const numeric = Number(value);
+            if (Number.isFinite(numeric) && numeric < 0) return '#15803d';
+            return '#b91c1c';
+        });
+
+        priceChart.data.labels = labels;
+        priceChart.data.datasets[0].data = values;
+        priceChart.data.datasets[0].borderColor = backgroundColors;
+        priceChart.data.datasets[0].backgroundColor = backgroundColors;
+        priceChart.data.datasets[0].badgeLabel = 'koszt';
+        priceChart.data.datasets[0].badgeUnit = 'zł';
+        priceChart.data.datasets[0].badgeColor = '#b91c1c';
+        priceChart.data.datasets[0].forceBadgeAbove = true;
+        priceChart.data.datasets[0].liveIndex = -1;
+        priceChart.data.datasets[0].selectedIndex = selectedIndex;
+        priceChart.data.datasets[0].minIndex = -1;
+        priceChart.data.datasets[0].frameRanges = frameRanges;
+        priceChart.data.datasets[1].data = [];
+        priceChart.data.datasets[1].label = 'sprzedaż';
+        priceChart.data.datasets[1].borderColor = '#14532d';
+        priceChart.data.datasets[1].backgroundColor = (ctx) => sellAreaGradient(ctx.chart);
+        priceChart.data.datasets[1].pointBorderColor = '#14532d';
+        priceChart.data.datasets[1].badgeLabel = 'sprzedaż';
+        priceChart.data.datasets[1].badgeUnit = 'zł';
+        priceChart.data.datasets[1].badgeColor = '#14532d';
+        priceChart.data.datasets[1].fill = 'origin';
+        priceChart.setDatasetVisibility(0, true);
+        priceChart.setDatasetVisibility(1, false);
+        priceChart.options.plugins.tooltip.enabled = false;
+        applyYAxisBounds(values);
+        priceChart.update();
+    }
+
     chartModeButtons.forEach((btn) => {
         btn.addEventListener('click', () => {
             applyChartMode(btn.dataset.chartMode || 'buy');
         });
     });
+
+    if (todayUsageMetric) {
+        todayUsageMetric.addEventListener('click', () => {
+            if (chartView === 'usage') {
+                renderView(currentViewIndex);
+                return;
+            }
+            renderUsageView();
+        });
+        todayUsageMetric.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            if (chartView === 'usage') {
+                renderView(currentViewIndex);
+                return;
+            }
+            renderUsageView();
+        });
+    }
+
+    if (todayCostMetric) {
+        todayCostMetric.addEventListener('click', () => {
+            if (chartView === 'cost') {
+                renderView(currentViewIndex);
+                return;
+            }
+            renderCostView();
+        });
+        todayCostMetric.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            if (chartView === 'cost') {
+                renderView(currentViewIndex);
+                return;
+            }
+            renderCostView();
+        });
+    }
+
+    if (monthUsageMetric) {
+        monthUsageMetric.addEventListener('click', () => {
+            if (chartView === 'month-usage') {
+                renderView(currentViewIndex);
+                return;
+            }
+            renderMonthUsageView();
+        });
+        monthUsageMetric.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            if (chartView === 'month-usage') {
+                renderView(currentViewIndex);
+                return;
+            }
+            renderMonthUsageView();
+        });
+    }
+
+    if (monthCostMetric) {
+        monthCostMetric.addEventListener('click', () => {
+            if (chartView === 'month-cost') {
+                renderView(currentViewIndex);
+                return;
+            }
+            renderMonthCostView();
+        });
+        monthCostMetric.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            if (chartView === 'month-cost') {
+                renderView(currentViewIndex);
+                return;
+            }
+            renderMonthCostView();
+        });
+    }
 
     async function loadDashboardData() {
         if (!dashboardDataUrl) {
@@ -827,13 +1329,27 @@
             tomorrowFrames = Array.isArray(payload.tomorrowFrames) ? payload.tomorrowFrames : [];
             todaySellFrames = Array.isArray(payload.todaySellFrames) ? payload.todaySellFrames : [];
             tomorrowSellFrames = Array.isArray(payload.tomorrowSellFrames) ? payload.tomorrowSellFrames : [];
+            todayUsageFrames = Array.isArray(payload.todayUsageFrames) ? payload.todayUsageFrames : [];
+            todayCostFrames = Array.isArray(payload.todayCostFrames) ? payload.todayCostFrames : [];
+            monthUsageDailyFrames = Array.isArray(payload.monthUsageDailyFrames) ? payload.monthUsageDailyFrames : [];
+            monthCostDailyFrames = Array.isArray(payload.monthCostDailyFrames) ? payload.monthCostDailyFrames : [];
             secondsToPublish = Number(payload.secondsToPublish || secondsToPublish || 0);
             views = createViews();
             currentViewIndex = Math.min(currentViewIndex, views.length - 1);
 
             updateMetrics(payload.metrics);
             updateMeterSelect(payload.meters, payload.selectedMeterId);
-            renderView(currentViewIndex);
+            if (chartView === 'usage') {
+                renderUsageView();
+            } else if (chartView === 'cost') {
+                renderCostView();
+            } else if (chartView === 'month-usage') {
+                renderMonthUsageView();
+            } else if (chartView === 'month-cost') {
+                renderMonthCostView();
+            } else {
+                renderView(currentViewIndex);
+            }
         } catch (error) {
             chartInfoEl.textContent = error.message || 'Nie udało się pobrać danych.';
         } finally {
