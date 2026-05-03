@@ -534,6 +534,8 @@
                     let y = isNegative
                         ? (top - boxGap - pointerH - boxH / 2)
                         : (bottom + boxGap + pointerH + boxH / 2);
+                    const minBoxY = (isNegative ? 4 : pointerH + 4);
+                    const maxBoxY = chart.height - boxH - (isNegative ? pointerH : 0) - 4;
                     let boxY = y - (boxH / 2);
                     if (selectedBadgeBox) {
                         const overlapsX = boxX < selectedBadgeBox.x + selectedBadgeBox.w && boxX + boxW > selectedBadgeBox.x;
@@ -543,6 +545,8 @@
                             y = boxY + boxH / 2;
                         }
                     }
+                    boxY = Math.min(Math.max(boxY, minBoxY), maxBoxY);
+                    y = boxY + boxH / 2;
                     const pointerX = Math.min(Math.max(x, boxX + 14), boxX + boxW - 14);
                     const pointerW = 12;
 
