@@ -455,14 +455,18 @@
                     const lineH = 18;
                     const boxW = textW + padX * 2;
                     const boxH = showSellValue ? 42 : 30;
-                    const y = isNegative
+                    let y = isNegative
                         ? (top - boxGap - pointerH - boxH / 2)
                         : (bottom + boxGap + pointerH + boxH / 2);
                     const chartLeft = (chart.chartArea?.left ?? 0) + 4;
                     const chartRight = (chart.chartArea?.right ?? chart.width) - 4;
                     const centeredBoxX = x - (boxW / 2);
                     const boxX = Math.min(Math.max(centeredBoxX, chartLeft), chartRight - boxW);
-                    const boxY = y - (boxH / 2);
+                    const minBoxY = (isNegative ? 4 : pointerH + 4);
+                    const maxBoxY = chart.height - boxH - (isNegative ? pointerH : 0) - 4;
+                    let boxY = y - (boxH / 2);
+                    boxY = Math.min(Math.max(boxY, minBoxY), maxBoxY);
+                    y = boxY + boxH / 2;
                     selectedBadgeBox = { x: boxX, y: boxY, w: boxW, h: boxH };
                     const pointerX = Math.min(Math.max(x, boxX + 14), boxX + boxW - 14);
                     const pointerW = 12;
