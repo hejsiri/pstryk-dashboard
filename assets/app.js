@@ -9,6 +9,8 @@
     let todayCostFrames = data.todayCostFrames || [];
     let monthUsageDailyFrames = data.monthUsageDailyFrames || [];
     let monthCostDailyFrames = data.monthCostDailyFrames || [];
+    let previousMonthUsageDailyFrames = data.previousMonthUsageDailyFrames || [];
+    let previousMonthCostDailyFrames = data.previousMonthCostDailyFrames || [];
     let secondsToPublish = Number(data.secondsToPublish || 0);
     const dashboardDataUrl = data.dashboardDataUrl || '';
     const bgModeUrls = data.bgModeUrls || {};
@@ -67,8 +69,27 @@
         return d.toLocaleDateString('pl-PL', { day: '2-digit', timeZone: 'Europe/Warsaw' });
     }
 
-    function monthFrameTemplateFromNow() {
-        const now = new Date();
+    function monthHeadingLabel(frames, period = 'current') {
+        const list = Array.isArray(frames) ? frames : [];
+        const firstFrame = list.find((frame) => frame && frame.start);
+        let date = firstFrame ? parseApiDate(firstFrame.start) : null;
+
+        if (!date) {
+            date = new Date();
+            if (period === 'previous') {
+                date = new Date(date.getFullYear(), date.getMonth() - 1, 1);
+            }
+        }
+
+        return date.toLocaleDateString('pl-PL', {
+            month: 'long',
+            year: 'numeric',
+            timeZone: 'Europe/Warsaw'
+        });
+    }
+
+    function monthFrameTemplate(referenceDate = new Date()) {
+        const now = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
         return {
             year: now.getFullYear(),
             monthIndex: now.getMonth(),
@@ -76,9 +97,17 @@
         };
     }
 
-    function fillMonthFrames(frames, valueKey) {
+    function monthReferenceDate(period = 'current') {
+        const date = new Date();
+        if (period === 'previous') {
+            return new Date(date.getFullYear(), date.getMonth() - 1, 1);
+        }
+        return new Date(date.getFullYear(), date.getMonth(), 1);
+    }
+
+    function fillMonthFrames(frames, valueKey, period = 'current') {
         const list = Array.isArray(frames) ? frames : [];
-        const template = monthFrameTemplateFromNow();
+        const template = monthFrameTemplate(monthReferenceDate(period));
         const byDay = new Map();
 
         list.forEach((frame) => {
@@ -281,6 +310,7 @@
 
     const chartEl = document.getElementById('priceChart');
     const chartTitleEl = document.getElementById('chartTitle');
+    const chartSummaryBadgeEl = document.getElementById('chartSummaryBadge');
     const chartInfoEl = document.getElementById('chartInfo');
     const chartLoaderEl = document.getElementById('chartLoader');
     const chartModeButtons = Array.from(document.querySelectorAll('[data-chart-mode]'));
@@ -292,13 +322,15 @@
     const nextBtn = document.getElementById('nextDayBtn');
     const countdownEl = document.getElementById('nextDayCountdown');
 
-    if (!chartEl || !chartTitleEl || !chartInfoEl || !prevBtn || !nextBtn || !countdownEl || typeof Chart === 'undefined') {
+    if (!chartEl || !chartTitleEl || !chartSummaryBadgeEl || !chartInfoEl || !prevBtn || !nextBtn || !countdownEl || typeof Chart === 'undefined') {
         return;
     }
 
     let currentViewIndex = 0;
     let chartMode = readStoredChartMode();
     let chartView = 'prices';
+    let monthUsagePeriod = 'current';
+    let monthCostPeriod = 'current';
 
     function readStoredChartMode() {
         try {
@@ -408,6 +440,29 @@
 
     function setYAxisUnit(unit) {
         priceChart.options.scales.y.ticks.callback = (v) => `${Number(v).toFixed(2)} ${unit}`;
+    }
+
+    function setChartSummaryBadge(value, suffix) {
+        if (value === null || value === undefined) {
+            chartSummaryBadgeEl.hidden = true;
+            chartSummaryBadgeEl.textContent = '';
+            return;
+        }
+        chartSummaryBadgeEl.textContent = formatMetric(value, suffix);
+        chartSummaryBadgeEl.hidden = false;
+    }
+
+    function showMonthToggle(period, label) {
+        prevBtn.style.display = 'none';
+        countdownEl.style.display = 'none';
+        nextBtn.style.display = 'inline-block';
+        if (period === 'previous') {
+            nextBtn.textContent = 'bieżący miesiąc →';
+            nextBtn.setAttribute('aria-label', `Pokaż bieżący miesiąc dla ${label}`);
+        } else {
+            nextBtn.textContent = '← poprzedni miesiąc';
+            nextBtn.setAttribute('aria-label', `Pokaż poprzedni miesiąc dla ${label}`);
+        }
     }
 
     function formatCountdown(totalSeconds) {
@@ -858,6 +913,7 @@
         chartView = 'prices';
         setMetricChartView('prices');
         setYAxisUnit('zł');
+        setChartSummaryBadge(null);
         chartTitleEl.textContent = `Ceny energii ${dayWord}`;
         chartInfoEl.textContent = view.info;
         updateNavVisibility();
@@ -983,6 +1039,7 @@
         const liveIndex = frames.findIndex(f => f.is_live);
         const selectedIndex = liveIndex >= 0 ? liveIndex : -1;
         const backgroundColors = values.map(() => '#0f766e');
+        setChartSummaryBadge(values.reduce((sum, value) => sum + (Number(value) || 0), 0), 'kWh');
 
         priceChart.data.labels = labels;
         priceChart.data.datasets[0].data = values;
@@ -1042,6 +1099,7 @@
         const frameRanges = frames.map(f => rangeLabel(f.start, f.end));
         const liveIndex = frames.findIndex(f => f.is_live);
         const selectedIndex = liveIndex >= 0 ? liveIndex : -1;
+        setChartSummaryBadge(values.reduce((sum, value) => sum + (Number(value) || 0), 0), 'zł');
         const backgroundColors = values.map((value, index) => {
             const numeric = Number(value);
             if (index === liveIndex) return '#f59e0b';
@@ -1069,18 +1127,27 @@
         priceChart.update();
     }
 
-    function renderMonthUsageView() {
+    function renderMonthUsageView(period = monthUsagePeriod) {
+        monthUsagePeriod = period;
         chartView = 'month-usage';
         setMetricChartView('month-usage');
         setYAxisUnit('kWh');
-        chartTitleEl.textContent = 'Zużycie energii w miesiącu';
-        chartInfoEl.textContent = 'Dzienne zużycie energii od początku miesiąca.';
-        prevBtn.style.display = 'none';
-        nextBtn.style.display = 'none';
-        countdownEl.style.display = 'none';
+        const usageFrames = fillMonthFrames(
+            period === 'previous' ? previousMonthUsageDailyFrames : monthUsageDailyFrames,
+            'display_usage',
+            period
+        );
+        const monthLabel = monthHeadingLabel(usageFrames, period);
+        chartTitleEl.textContent = `Zużycie energii - ${monthLabel}`;
+        setChartSummaryBadge(
+            usageFrames.reduce((sum, frame) => sum + (Number(frame.display_usage) || 0), 0),
+            'kWh'
+        );
+        chartInfoEl.textContent = period === 'previous'
+            ? 'Dzienne zużycie energii w poprzednim miesiącu.'
+            : 'Dzienne zużycie energii od początku bieżącego miesiąca.';
+        showMonthToggle(period, 'zużycia energii');
         applyXAxisDensity();
-
-        const usageFrames = fillMonthFrames(monthUsageDailyFrames, 'display_usage');
 
         if (!usageFrames.length) {
             priceChart.data.labels = ['Brak danych'];
@@ -1145,18 +1212,27 @@
         priceChart.update();
     }
 
-    function renderMonthCostView() {
+    function renderMonthCostView(period = monthCostPeriod) {
+        monthCostPeriod = period;
         chartView = 'month-cost';
         setMetricChartView('month-cost');
         setYAxisUnit('zł');
-        chartTitleEl.textContent = 'Koszt energii w miesiącu';
-        chartInfoEl.textContent = 'Dzienny koszt energii od początku miesiąca.';
-        prevBtn.style.display = 'none';
-        nextBtn.style.display = 'none';
-        countdownEl.style.display = 'none';
+        const frames = fillMonthFrames(
+            period === 'previous' ? previousMonthCostDailyFrames : monthCostDailyFrames,
+            'display_cost',
+            period
+        );
+        const monthLabel = monthHeadingLabel(frames, period);
+        chartTitleEl.textContent = `Koszt energii - ${monthLabel}`;
+        setChartSummaryBadge(
+            frames.reduce((sum, frame) => sum + (Number(frame.display_cost) || 0), 0),
+            'zł'
+        );
+        chartInfoEl.textContent = period === 'previous'
+            ? 'Dzienny koszt energii w poprzednim miesiącu.'
+            : 'Dzienny koszt energii od początku bieżącego miesiąca.';
+        showMonthToggle(period, 'kosztu energii');
         applyXAxisDensity();
-
-        const frames = fillMonthFrames(monthCostDailyFrames, 'display_cost');
         if (!frames.length) {
             priceChart.data.labels = ['Brak danych'];
             priceChart.data.datasets[0].data = [0];
@@ -1333,6 +1409,8 @@
             todayCostFrames = Array.isArray(payload.todayCostFrames) ? payload.todayCostFrames : [];
             monthUsageDailyFrames = Array.isArray(payload.monthUsageDailyFrames) ? payload.monthUsageDailyFrames : [];
             monthCostDailyFrames = Array.isArray(payload.monthCostDailyFrames) ? payload.monthCostDailyFrames : [];
+            previousMonthUsageDailyFrames = Array.isArray(payload.previousMonthUsageDailyFrames) ? payload.previousMonthUsageDailyFrames : [];
+            previousMonthCostDailyFrames = Array.isArray(payload.previousMonthCostDailyFrames) ? payload.previousMonthCostDailyFrames : [];
             secondsToPublish = Number(payload.secondsToPublish || secondsToPublish || 0);
             views = createViews();
             currentViewIndex = Math.min(currentViewIndex, views.length - 1);
@@ -1365,6 +1443,16 @@
     });
 
     nextBtn.addEventListener('click', () => {
+        if (chartView === 'month-usage') {
+            monthUsagePeriod = monthUsagePeriod === 'current' ? 'previous' : 'current';
+            renderMonthUsageView(monthUsagePeriod);
+            return;
+        }
+        if (chartView === 'month-cost') {
+            monthCostPeriod = monthCostPeriod === 'current' ? 'previous' : 'current';
+            renderMonthCostView(monthCostPeriod);
+            return;
+        }
         if (currentViewIndex < views.length - 1) {
             currentViewIndex += 1;
             renderView(currentViewIndex);
@@ -1383,6 +1471,7 @@
         priceChart.update('none');
     });
 
+    updateMetrics(data.metrics || {});
     renderView(currentViewIndex);
-    loadDashboardData();
+    setDashboardLoading(false);
 })();

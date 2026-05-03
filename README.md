@@ -29,6 +29,7 @@ Historia zmian projektu znajduje się w pliku `CHANGELOG.md`.
 - ceny energii na dziś i jutro,
 - wykres słupkowy z nawigacją między dniami,
 - kafelki z zużyciem i kosztami dla dnia oraz miesiąca,
+- przełączanie wykresów miesięcznych między bieżącym i poprzednim miesiącem,
 - sekcja `RAW API`,
 - dodatkowa obsługa `Integrations API key`,
 - automatyczna zmiana tła zależnie od pory dnia,

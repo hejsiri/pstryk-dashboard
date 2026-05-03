@@ -17,8 +17,8 @@ $todayUsage = [];
 $todayCost = [];
 $monthUsage = [];
 $monthCost = [];
-$monthUsageDaily = [];
-$monthCostDaily = [];
+$previousMonthUsage = [];
+$previousMonthCost = [];
 $latestUsageFrame = null;
 $rawApiEntries = [];
 $selfUrl = strtok($_SERVER['REQUEST_URI'] ?? 'index.php', '?') ?: 'index.php';
@@ -264,7 +264,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_b
     exit;
 }
 
-if ($client->hasAuth() && ($isDashboardDataRequest || $showRawApi)) {
+if ($client->hasAuth()) {
     try {
         $cachePrefix = 'user:' . (string) ($client->getUserId() ?? 'unknown');
         $metersResult = api_cached_call(
@@ -312,7 +312,11 @@ if ($client->hasAuth() && ($isDashboardDataRequest || $showRawApi)) {
                     (int) $todayLocal->format('m'),
                     1
                 )->setTime(0, 0, 0);
+                $previousMonthStartLocal = $monthStartLocal->modify('-1 month');
+                $previousMonthEndLocal = $monthStartLocal;
                 $monthStartIso = DateWindow::isoUtc($monthStartLocal);
+                $previousMonthStartIso = DateWindow::isoUtc($previousMonthStartLocal);
+                $previousMonthEndIso = DateWindow::isoUtc($previousMonthEndLocal);
                 $monthNowIso = DateWindow::isoUtc(new DateTimeImmutable('now', new DateTimeZone('Europe/Warsaw')));
 
                 $todayPricingResult = api_cached_call(
@@ -481,13 +485,13 @@ if ($client->hasAuth() && ($isDashboardDataRequest || $showRawApi)) {
                     ];
                 }
 
-                $monthUsageDailyResult = api_cached_call(
-                    $cachePrefix . ':usage:day:' . $meterId . ':' . $monthStartIso . ':' . $monthNowIso,
+                $previousMonthUsageResult = api_cached_call(
+                    $cachePrefix . ':usage:' . $meterId . ':' . $previousMonthStartIso . ':' . $previousMonthEndIso,
                     $cacheTtlSeconds,
-                    static fn() => $client->getPowerUsage($meterId, $monthStartIso, $monthNowIso, 'day'),
+                    static fn() => $client->getPowerUsage($meterId, $previousMonthStartIso, $previousMonthEndIso),
                     $forceRefresh
                 );
-                $monthUsageDaily = is_array($monthUsageDailyResult['data']) ? $monthUsageDailyResult['data'] : [];
+                $previousMonthUsage = is_array($previousMonthUsageResult['data']) ? $previousMonthUsageResult['data'] : [];
 
                 $monthCostResult = api_cached_call(
                     $cachePrefix . ':cost:' . $meterId . ':' . $monthStartIso . ':' . $monthNowIso,
@@ -510,13 +514,13 @@ if ($client->hasAuth() && ($isDashboardDataRequest || $showRawApi)) {
                     ];
                 }
 
-                $monthCostDailyResult = api_cached_call(
-                    $cachePrefix . ':cost:day:' . $meterId . ':' . $monthStartIso . ':' . $monthNowIso,
+                $previousMonthCostResult = api_cached_call(
+                    $cachePrefix . ':cost:' . $meterId . ':' . $previousMonthStartIso . ':' . $previousMonthEndIso,
                     $cacheTtlSeconds,
-                    static fn() => $client->getPowerCost($meterId, $monthStartIso, $monthNowIso, 'day'),
+                    static fn() => $client->getPowerCost($meterId, $previousMonthStartIso, $previousMonthEndIso),
                     $forceRefresh
                 );
-                $monthCostDaily = is_array($monthCostDailyResult['data']) ? $monthCostDailyResult['data'] : [];
+                $previousMonthCost = is_array($previousMonthCostResult['data']) ? $previousMonthCostResult['data'] : [];
 
                 if ($showRawApi) {
                     $rawFetchers = [
@@ -968,8 +972,6 @@ function aggregate_month_chart_points(array $source, callable $extractValue, str
     }
 
     $warsaw = new DateTimeZone('Europe/Warsaw');
-    $nowLocal = new DateTimeImmutable('now', $warsaw);
-    $targetMonth = $nowLocal->format('Y-m');
     $buckets = [];
 
     foreach ($frames as $frame) {
@@ -981,10 +983,6 @@ function aggregate_month_chart_points(array $source, callable $extractValue, str
         try {
             $startLocal = (new DateTimeImmutable($startRaw))->setTimezone($warsaw);
         } catch (Exception) {
-            continue;
-        }
-
-        if ($startLocal->format('Y-m') !== $targetMonth) {
             continue;
         }
 
@@ -1022,6 +1020,8 @@ $todayUsageChartPoints = usage_chart_points($todayUsage);
 $todayCostChartPoints = cost_chart_points($todayCost);
 $monthUsageDailyChartPoints = aggregate_month_chart_points($monthUsage, 'usage_frame_value', 'display_usage');
 $monthCostDailyChartPoints = aggregate_month_chart_points($monthCost, 'cost_frame_value', 'display_cost');
+$previousMonthUsageDailyChartPoints = aggregate_month_chart_points($previousMonthUsage, 'usage_frame_value', 'display_usage');
+$previousMonthCostDailyChartPoints = aggregate_month_chart_points($previousMonthCost, 'cost_frame_value', 'display_cost');
 $dashboardDataUrl = url_with_query(['dashboard_data' => '1']);
 
 if ($isDashboardDataRequest) {
@@ -1051,6 +1051,8 @@ if ($isDashboardDataRequest) {
         'todayCostFrames' => $todayCostChartPoints,
         'monthUsageDailyFrames' => $monthUsageDailyChartPoints,
         'monthCostDailyFrames' => $monthCostDailyChartPoints,
+        'previousMonthUsageDailyFrames' => $previousMonthUsageDailyChartPoints,
+        'previousMonthCostDailyFrames' => $previousMonthCostDailyChartPoints,
         'secondsToPublish' => (int) $secondsToPublish,
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG);
     exit;
@@ -1251,7 +1253,10 @@ if ($isDashboardDataRequest) {
 
         <div class="chart-tile">
             <div class="chart-header">
-                <h2 id="chartTitle">Ceny energii godzinowe dziś</h2>
+                <div class="chart-title-group">
+                    <h2 id="chartTitle">Ceny energii godzinowe dziś</h2>
+                    <span id="chartSummaryBadge" class="chart-summary-badge" hidden></span>
+                </div>
                 <div class="day-nav">
                     <button id="prevDayBtn" type="button" aria-label="Poprzedni dzień">&larr; dziś</button>
                     <button id="nextDayBtn" type="button" aria-label="Następny dzień">jutro &rarr;</button>
@@ -1324,6 +1329,12 @@ if ($isDashboardDataRequest) {
 </div>
 <script>
 window.__PSTRYK_DASHBOARD__ = {
+    metrics: <?= json_encode([
+        'todayUsage' => (float) ($todayUsage['fae_total_usage'] ?? 0),
+        'monthUsage' => (float) ($monthUsage['fae_total_usage'] ?? 0),
+        'todayCost' => (float) ($todayCost['total_sales_cost_net'] ?? 0),
+        'monthCost' => (float) ($monthCost['total_sales_cost_net'] ?? $monthCost['total_energy_cost_net'] ?? 0),
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     todayFrames: <?= json_encode($todayChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     tomorrowFrames: <?= json_encode($tomorrowChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     todaySellFrames: <?= json_encode($todaySellChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
@@ -1332,6 +1343,8 @@ window.__PSTRYK_DASHBOARD__ = {
     todayCostFrames: <?= json_encode($todayCostChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     monthUsageDailyFrames: <?= json_encode($monthUsageDailyChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     monthCostDailyFrames: <?= json_encode($monthCostDailyChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
+    previousMonthUsageDailyFrames: <?= json_encode($previousMonthUsageDailyChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
+    previousMonthCostDailyFrames: <?= json_encode($previousMonthCostDailyChartPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     dashboardDataUrl: <?= json_encode($dashboardDataUrl, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
     secondsToPublish: <?= (int) $secondsToPublish ?>,
     bgMode: <?= json_encode($bgMode, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
