@@ -570,7 +570,8 @@
 
     const glassBarsPlugin = {
         id: 'glassBars',
-        afterDatasetsDraw(chart) {
+        afterDatasetDraw(chart, args) {
+            if (args.index !== 0) return;
             const meta = chart.getDatasetMeta(0);
             if (!meta || !meta.data || !meta.data.length) return;
             const ctx = chart.ctx;
@@ -620,7 +621,8 @@
                 backgroundColor: '#0f766e',
                 borderRadius: 8,
                 borderSkipped: false,
-                maxBarThickness: 26
+                maxBarThickness: 26,
+                order: 2
             }, {
                 label: 'sprzedaż',
                 type: 'line',
@@ -637,7 +639,8 @@
                 tension: 0.32,
                 spanGaps: true,
                 fill: 'origin',
-                hidden: true
+                hidden: true,
+                order: 1
             }]
         },
         plugins: [glassBarsPlugin, livePriceBadgePlugin],
