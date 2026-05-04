@@ -446,10 +446,28 @@
         if (value === null || value === undefined) {
             chartSummaryBadgeEl.hidden = true;
             chartSummaryBadgeEl.textContent = '';
+            chartSummaryBadgeEl.style.display = 'none';
             return;
         }
+        chartSummaryBadgeEl.style.display = '';
         chartSummaryBadgeEl.textContent = formatMetric(value, suffix);
         chartSummaryBadgeEl.hidden = false;
+    }
+
+    function sumFrameValues(frames, key) {
+        return (Array.isArray(frames) ? frames : []).reduce((sum, frame) => {
+            return sum + (Number(frame?.[key]) || 0);
+        }, 0);
+    }
+
+    function initialMetrics() {
+        const metrics = data.metrics || {};
+        return {
+            todayUsage: metrics.todayUsage ?? sumFrameValues(todayUsageFrames, 'display_usage'),
+            monthUsage: metrics.monthUsage ?? sumFrameValues(monthUsageDailyFrames, 'display_usage'),
+            todayCost: metrics.todayCost ?? sumFrameValues(todayCostFrames, 'display_cost'),
+            monthCost: metrics.monthCost ?? sumFrameValues(monthCostDailyFrames, 'display_cost')
+        };
     }
 
     function showMonthToggle(period, label) {
@@ -1471,7 +1489,7 @@
         priceChart.update('none');
     });
 
-    updateMetrics(data.metrics || {});
+    updateMetrics(initialMetrics());
     renderView(currentViewIndex);
     setDashboardLoading(false);
 })();
